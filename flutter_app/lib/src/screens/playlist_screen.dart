@@ -213,12 +213,23 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                         return const _PlaylistEmptyState();
                       }
 
-                      final double pageHeight =
-                          (constraints.maxHeight - 70).clamp(250.0, 430.0);
+                      final bool showDots = _movies.length > 1;
+                      const double topSpacing = 12;
+                      const double gapBelowCard = 18;
+                      const double dotsBlockHeight = 16;
+                      const double bottomSpacing = 28;
+                      final double reservedHeight = topSpacing +
+                          gapBelowCard +
+                          (showDots ? dotsBlockHeight : 0) +
+                          bottomSpacing;
+                      final double pageHeight = (constraints.maxHeight -
+                              reservedHeight)
+                          .clamp(220.0, 430.0);
 
                       return Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
+                          const SizedBox(height: topSpacing),
                           SizedBox(
                             height: pageHeight,
                             child: PageView.builder(
@@ -259,11 +270,12 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                             ),
                           ),
                           const SizedBox(height: 18),
-                          _PageDots(
-                            count: _movies.length,
-                            activeIndex: _currentIndex,
-                          ),
-                          const SizedBox(height: 52),
+                          if (showDots)
+                            _PageDots(
+                              count: _movies.length,
+                              activeIndex: _currentIndex,
+                            ),
+                          const SizedBox(height: bottomSpacing),
                         ],
                       );
                     },
@@ -419,87 +431,97 @@ class _PlaylistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 280,
-      child: Material(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(20),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: AspectRatio(
-            aspectRatio: 280 / 380,
-            child: Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                Image.network(
-                  getImageUrl(movie.posterPath, 'w500'),
-                  fit: BoxFit.cover,
-                  errorBuilder: (
-                    BuildContext context,
-                    Object error,
-                    StackTrace? stackTrace,
-                  ) {
-                    return const ColoredBox(
-                      color: AppColors.cardBackground,
-                      child: Center(
-                        child: Icon(
-                          Icons.movie_creation_outlined,
-                          color: AppColors.textMuted,
-                          size: 42,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: <Color>[
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.9),
-                      ],
-                      stops: const <double>[0.45, 1],
+    return Center(
+      child: AspectRatio(
+        aspectRatio: 280 / 380,
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            final bool compact = constraints.maxWidth < 170;
+            final double horizontalInset = compact ? 14 : 20;
+            final double bottomInset = compact ? 16 : 24;
+            final double titleSize = compact ? 18 : 22;
+            final double dateSize = compact ? 11 : 13;
+
+            return Material(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(20),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onTap,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    Image.network(
+                      getImageUrl(movie.posterPath, 'w500'),
+                      fit: BoxFit.cover,
+                      errorBuilder: (
+                        BuildContext context,
+                        Object error,
+                        StackTrace? stackTrace,
+                      ) {
+                        return const ColoredBox(
+                          color: AppColors.cardBackground,
+                          child: Center(
+                            child: Icon(
+                              Icons.movie_creation_outlined,
+                              color: AppColors.textMuted,
+                              size: 42,
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  ),
-                ),
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: 24,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        movie.title.toUpperCase(),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.text,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.5,
-                          height: 1.1,
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: <Color>[
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.9),
+                          ],
+                          stops: const <double>[0.45, 1],
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _formatReleaseDate(movie.releaseDate),
-                        style: const TextStyle(
-                          color: Color(0xB3FFFFFF),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1,
-                        ),
+                    ),
+                    Positioned(
+                      left: horizontalInset,
+                      right: horizontalInset,
+                      bottom: bottomInset,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            movie.title.toUpperCase(),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: AppColors.text,
+                              fontSize: titleSize,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: compact ? 1.0 : 1.5,
+                              height: 1.1,
+                            ),
+                          ),
+                          SizedBox(height: compact ? 4 : 6),
+                          Text(
+                            _formatReleaseDate(movie.releaseDate),
+                            style: TextStyle(
+                              color: const Color(0xB3FFFFFF),
+                              fontSize: dateSize,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: compact ? 0.7 : 1,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

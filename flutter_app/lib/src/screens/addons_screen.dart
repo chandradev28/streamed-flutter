@@ -27,6 +27,10 @@ class _AddonsScreenState extends State<AddonsScreen> {
   bool _installing = false;
   bool _useAddons = false;
 
+  int get _streamAddonCount => _addons
+      .where((AddonManifest addon) => addon.hasStreamResource)
+      .length;
+
   @override
   void initState() {
     super.initState();
@@ -112,6 +116,32 @@ class _AddonsScreenState extends State<AddonsScreen> {
     await _load();
   }
 
+  Future<void> _toggleAddon(AddonManifest addon, bool value) async {
+    await widget.addonsService.setAddonEnabled(addon.id, value);
+    await _load();
+  }
+
+  Future<void> _refreshAddon(AddonManifest addon) async {
+    try {
+      final AddonManifest? refreshed =
+          await widget.addonsService.refreshAddon(addon.id);
+      await _load();
+      if (!mounted || refreshed == null) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${refreshed.name} refreshed.')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -148,9 +178,11 @@ class _AddonsScreenState extends State<AddonsScreen> {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
-                            'When enabled, Torboxers also queries the installed Stremio addons for stream links.',
-                            style: TextStyle(
+                          Text(
+                            _useAddons
+                                ? 'Torboxers will merge ${_streamAddonCount == 0 ? 'no installed stream addons yet' : '$_streamAddonCount stream addon${_streamAddonCount == 1 ? '' : 's'}'} into search.'
+                                : 'Only the built-in Torrentio path is active right now.',
+                            style: const TextStyle(
                               color: AppColors.textMuted,
                               height: 1.45,
                             ),
@@ -184,11 +216,19 @@ class _AddonsScreenState extends State<AddonsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    const Text(
+                      'Paste a full Stremio manifest URL. `https://.../manifest.json`, configure links with query params, and `stremio://...` links are all supported.',
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: _urlController,
                       style: const TextStyle(color: AppColors.text),
                       decoration: InputDecoration(
-                        hintText: 'https://.../manifest.json',
+                        hintText: 'https://.../manifest.json or stremio://...',
                         hintStyle: const TextStyle(color: AppColors.textSubtle),
                         filled: true,
                         fillColor: Colors.white.withOpacity(0.04),
@@ -206,6 +246,39 @@ class _AddonsScreenState extends State<AddonsScreen> {
                         foregroundColor: AppColors.background,
                       ),
                       child: Text(_installing ? 'Installing...' : 'Install'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBackground,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: _OverviewMetric(
+                        value: _addons.length.toString(),
+                        label: 'Installed',
+                      ),
+                    ),
+                    Expanded(
+                      child: _OverviewMetric(
+                        value: _streamAddonCount.toString(),
+                        label: 'Stream ready',
+                      ),
+                    ),
+                    Expanded(
+                      child: _OverviewMetric(
+                        value: _addons
+                            .where((AddonManifest addon) => addon.configurationRequired)
+                            .length
+                            .toString(),
+                        label: 'Need setup',
+                      ),
                     ),
                   ],
                 ),
@@ -245,6 +318,18 @@ class _AddonsScreenState extends State<AddonsScreen> {
                                   ),
                                 ),
                               ),
+                              Switch(
+                                value: addon.enabled,
+                                onChanged: (bool value) =>
+                                    _toggleAddon(addon, value),
+                              ),
+                              IconButton(
+                                onPressed: () => _refreshAddon(addon),
+                                icon: const Icon(
+                                  Icons.refresh,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
                               IconButton(
                                 onPressed: () => _removeAddon(addon),
                                 icon: const Icon(
@@ -269,11 +354,22 @@ class _AddonsScreenState extends State<AddonsScreen> {
                             runSpacing: 8,
                             children: <Widget>[
                               _AddonMetaChip(label: addon.version),
+                              if (addon.hasStreamResource)
+                                const _AddonMetaChip(label: 'Streams'),
+                              if (addon.hasSubtitleResource)
+                                const _AddonMetaChip(label: 'Subtitles'),
+                              _AddonMetaChip(
+                                label: addon.enabled ? 'Enabled' : 'Disabled',
+                              ),
                               _AddonMetaChip(
                                 label: addon.resources.isEmpty
                                     ? '0 resources'
                                     : '${addon.resources.length} resources',
                               ),
+                              if (addon.supportedMediaTypes.isNotEmpty)
+                                _AddonMetaChip(
+                                  label: addon.supportedMediaTypes.join(' • '),
+                                ),
                               if (addon.configurable)
                                 const _AddonMetaChip(label: 'Configurable'),
                               if (addon.configurationRequired)
@@ -322,6 +418,41 @@ class _AddonMetaChip extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
+    );
+  }
+}
+
+class _OverviewMetric extends StatelessWidget {
+  const _OverviewMetric({
+    required this.value,
+    required this.label,
+  });
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          value,
+          style: const TextStyle(
+            color: AppColors.text,
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 12,
+          ),
+        ),
+      ],
     );
   }
 }

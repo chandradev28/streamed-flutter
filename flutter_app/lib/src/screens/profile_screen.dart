@@ -32,6 +32,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Set<int> _expanded = <int>{};
   bool _loading = true;
   bool _saving = false;
+  String? _torBoxStatus;
+  bool _keyConfigured = false;
 
   @override
   void initState() {
@@ -48,28 +50,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _load() async {
     setState(() {
       _loading = true;
+      _torBoxStatus = null;
     });
 
     final AppSettings settings = await widget.settingsRepository.loadSettings();
-    final List<dynamic> torBoxResults = settings.torBoxApiKey == null ||
-            settings.torBoxApiKey!.trim().isEmpty
-        ? <dynamic>[null, const <TorBoxTorrent>[]]
-        : await Future.wait<dynamic>(<Future<dynamic>>[
-            widget.torBoxApiService.getUserInfo(),
-            widget.torBoxApiService.getUserTorrents(),
-          ]);
+    _apiKeyController.text = settings.torBoxApiKey ?? '';
+    final bool hasKey =
+        settings.torBoxApiKey != null && settings.torBoxApiKey!.trim().isNotEmpty;
 
-    if (!mounted) {
+    if (!hasKey) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _settings = settings;
+        _user = null;
+        _torrents = const <TorBoxTorrent>[];
+        _keyConfigured = false;
+        _loading = false;
+      });
       return;
     }
 
-    _apiKeyController.text = settings.torBoxApiKey ?? '';
-    setState(() {
-      _settings = settings;
-      _user = torBoxResults[0] as TorBoxUser?;
-      _torrents = torBoxResults[1] as List<TorBoxTorrent>;
-      _loading = false;
-    });
+    try {
+      final TorBoxAccountSnapshot snapshot =
+          await widget.torBoxApiService.loadAccountSnapshot();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _settings = settings;
+        _user = snapshot.user;
+        _torrents = snapshot.torrents;
+        _keyConfigured = true;
+        _loading = false;
+      });
+    } on TorBoxApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _settings = settings;
+        _user = null;
+        _torrents = const <TorBoxTorrent>[];
+        _keyConfigured = true;
+        _torBoxStatus = error.detail;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _settings = settings;
+        _user = null;
+        _torrents = const <TorBoxTorrent>[];
+        _keyConfigured = true;
+        _torBoxStatus = 'Could not load your TorBox account right now.';
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _saveApiKey() async {
@@ -80,32 +120,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     setState(() {
       _saving = true;
+      _torBoxStatus = null;
     });
 
-    await widget.settingsRepository.saveTorBoxApiKey(apiKey);
-    final bool valid = await widget.torBoxApiService.verifyApiKey();
     if (!mounted) {
       return;
     }
-
-    setState(() {
-      _saving = false;
-    });
-
-    if (!valid) {
+    try {
+      final TorBoxAccountSnapshot snapshot =
+          await widget.torBoxApiService.connectAndLoad(apiKey);
+      if (!mounted) {
+        return;
+      }
+      final AppSettings settings = await widget.settingsRepository.loadSettings();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _settings = settings;
+        _user = snapshot.user;
+        _torrents = snapshot.torrents;
+        _keyConfigured = true;
+        _saving = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('TorBox rejected that API key.')),
+        const SnackBar(content: Text('TorBox API key saved.')),
       );
-      return;
+    } on TorBoxApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _saving = false;
+        _keyConfigured = false;
+        _torBoxStatus = error.detail;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.detail)),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _saving = false;
+        _keyConfigured = false;
+        _torBoxStatus = 'Could not verify that TorBox API key.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not verify that TorBox API key.')),
+      );
     }
-
-    await _load();
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('TorBox API key saved.')),
-    );
   }
 
   Future<void> _removeApiKey() async {
@@ -248,8 +313,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           onPressed: _openMagnet,
                           child: const Text('Open Magnet'),
                         ),
+                        FilledButton.tonal(
+                          onPressed: _loading ? null : _load,
+                          child: const Text('Refresh'),
+                        ),
                       ],
                     ),
+                    if (_torBoxStatus != null) ...<Widget>[
+                      const SizedBox(height: 12),
+                      _TorBoxStatusBanner(
+                        message: _torBoxStatus!,
+                        error: _user == null,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -335,10 +411,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 12),
                       _AccountRow(label: 'Email', value: _user!.email),
                       _AccountRow(label: 'Plan', value: _user!.plan),
-                      _AccountRow(
-                        label: 'Slots',
-                        value: '${_user!.usedSlots}/${_user!.totalSlots}',
-                      ),
+                      if (_user!.hasSlotInfo)
+                        _AccountRow(
+                          label: 'Slots',
+                          value: '${_user!.usedSlots}/${_user!.totalSlots}',
+                        ),
                       if ((_user!.premiumExpiresAt ?? '').isNotEmpty)
                         _AccountRow(
                           label: 'Renews',
@@ -365,7 +442,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 )
               else if (_torrents.isEmpty)
-                const _EmptyLibraryState()
+                _EmptyLibraryState(
+                  keyConfigured: _keyConfigured,
+                  statusMessage: _torBoxStatus,
+                )
               else
                 ..._torrents.map(
                   (TorBoxTorrent torrent) => Padding(
@@ -485,6 +565,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
+class _TorBoxStatusBanner extends StatelessWidget {
+  const _TorBoxStatusBanner({
+    required this.message,
+    required this.error,
+  });
+
+  final String message;
+  final bool error;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color foreground = error
+        ? const Color(0xFFFCA5A5)
+        : const Color(0xFFBBF7D0);
+    final Color background = error
+        ? const Color(0x33EF4444)
+        : const Color(0x3310B981);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(
+          color: foreground,
+          height: 1.4,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
 class _QuickLinkCard extends StatelessWidget {
   const _QuickLinkCard({
     required this.title,
@@ -586,33 +703,54 @@ class _LibraryChip extends StatelessWidget {
 }
 
 class _EmptyLibraryState extends StatelessWidget {
-  const _EmptyLibraryState();
+  const _EmptyLibraryState({
+    required this.keyConfigured,
+    this.statusMessage,
+  });
+
+  final bool keyConfigured;
+  final String? statusMessage;
 
   @override
   Widget build(BuildContext context) {
+    final String title;
+    final String body;
+    if (!keyConfigured) {
+      title = 'Connect TorBox to load your library.';
+      body =
+          'Paste your TorBox API key above, save it, and your account torrents will appear here.';
+    } else if ((statusMessage ?? '').isNotEmpty) {
+      title = 'TorBox library could not be loaded.';
+      body = statusMessage!;
+    } else {
+      title = 'No TorBox torrents yet.';
+      body =
+          'Save your API key and add a magnet or start a Torboxers search to populate the library.';
+    }
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Column(
+      child: Column(
         children: <Widget>[
-          Icon(Icons.cloud_queue_outlined, color: AppColors.textMuted, size: 36),
-          SizedBox(height: 12),
+          const Icon(Icons.cloud_queue_outlined, color: AppColors.textMuted, size: 36),
+          const SizedBox(height: 12),
           Text(
-            'No TorBox torrents yet.',
-            style: TextStyle(
+            title,
+            style: const TextStyle(
               color: AppColors.text,
               fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
-            'Save your API key and add a magnet or start a Torboxers search to populate the library.',
+            body,
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textMuted, height: 1.45),
+            style: const TextStyle(color: AppColors.textMuted, height: 1.45),
           ),
         ],
       ),

@@ -103,24 +103,72 @@ class TorBoxUser {
   final int usedSlots;
   final String? premiumExpiresAt;
 
+  bool get hasSlotInfo => totalSlots > 0 || usedSlots > 0;
+
   factory TorBoxUser.fromJson(Map<String, dynamic> json) {
+    final int planCode = (json['plan'] as num?)?.toInt() ?? -1;
+    final int extraSlots =
+        (json['additional_concurrent_slots'] as num?)?.toInt() ?? 0;
+    final int totalSlots = (json['total_slots'] as num?)?.toInt() ??
+        (json['slots'] as num?)?.toInt() ??
+        _planSlots(planCode, extraSlots);
+    final int usedSlots = (json['used_slots'] as num?)?.toInt() ??
+        (json['active_downloads'] as num?)?.toInt() ??
+        0;
+
     return TorBoxUser(
       email: (json['email'] as String?) ??
           (json['username'] as String?) ??
           'TorBox account',
-      plan: (json['plan'] as String?) ??
+      plan: (json['plan_name'] as String?) ??
+          _planLabel(planCode) ??
+          (json['plan'] as String?) ??
           (json['subscription'] as String?) ??
           'Unknown plan',
       createdAt: json['created_at'] as String?,
-      totalSlots: (json['total_slots'] as num?)?.toInt() ??
-          (json['slots'] as num?)?.toInt() ??
-          0,
-      usedSlots: (json['used_slots'] as num?)?.toInt() ??
-          (json['active_downloads'] as num?)?.toInt() ??
-          0,
+      totalSlots: totalSlots,
+      usedSlots: usedSlots,
       premiumExpiresAt: json['premium_expires_at'] as String? ??
           json['premium_expiration'] as String?,
     );
+  }
+
+  static String? _planLabel(int code) {
+    switch (code) {
+      case 0:
+        return 'Free';
+      case 1:
+        return 'Essential';
+      case 2:
+        return 'Pro';
+      case 3:
+        return 'Standard';
+      default:
+        return null;
+    }
+  }
+
+  static int _planSlots(int code, int extraSlots) {
+    final int baseSlots;
+    switch (code) {
+      case 0:
+        baseSlots = 1;
+        break;
+      case 1:
+        baseSlots = 3;
+        break;
+      case 2:
+        baseSlots = 10;
+        break;
+      case 3:
+        baseSlots = 5;
+        break;
+      default:
+        baseSlots = 0;
+        break;
+    }
+
+    return baseSlots + extraSlots;
   }
 }
 
@@ -298,6 +346,7 @@ class AddonManifest {
     this.idPrefixes = const <String>[],
     this.logo,
     this.background,
+    this.enabled = true,
     this.configurable = false,
     this.configurationRequired = false,
   });
@@ -314,13 +363,36 @@ class AddonManifest {
   final List<String> idPrefixes;
   final String? logo;
   final String? background;
+  final bool enabled;
   final bool configurable;
   final bool configurationRequired;
 
+  bool get hasStreamResource => resources.any(
+        (AddonResource resource) => resource.name == 'stream',
+      );
+
+  bool get hasSubtitleResource => resources.any(
+        (AddonResource resource) => resource.name == 'subtitles',
+      );
+
+  List<String> get supportedMediaTypes {
+    final Set<String> values = <String>{};
+    for (final String type in types) {
+      if (type.trim().isNotEmpty) {
+        values.add(type.trim());
+      }
+    }
+    for (final AddonResource resource in resources) {
+      for (final String type in resource.types) {
+        if (type.trim().isNotEmpty) {
+          values.add(type.trim());
+        }
+      }
+    }
+    return values.toList(growable: false);
+  }
+
   bool supportsContent(String mediaType, String id) {
-    final bool hasStreamResource = resources.any(
-      (AddonResource resource) => resource.name == 'stream',
-    );
     if (!hasStreamResource) {
       return false;
     }
@@ -379,6 +451,7 @@ class AddonManifest {
           .toList(growable: false),
       logo: json['logo'] as String?,
       background: json['background'] as String?,
+      enabled: json['enabled'] as bool? ?? true,
       configurable: behaviorHints['configurable'] as bool? ?? false,
       configurationRequired:
           behaviorHints['configurationRequired'] as bool? ?? false,
@@ -399,12 +472,23 @@ class AddonManifest {
       'idPrefixes': idPrefixes,
       'logo': logo,
       'background': background,
+      'enabled': enabled,
       'behaviorHints': <String, dynamic>{
         'configurable': configurable,
         'configurationRequired': configurationRequired,
       },
     };
   }
+}
+
+class SourceSearchDiagnostics {
+  const SourceSearchDiagnostics({
+    this.sourceCounts = const <String, int>{},
+    this.sourceErrors = const <String, String>{},
+  });
+
+  final Map<String, int> sourceCounts;
+  final Map<String, String> sourceErrors;
 }
 
 class StreamSource {
@@ -417,9 +501,12 @@ class StreamSource {
     required this.quality,
     required this.sizeLabel,
     required this.isCached,
+    this.addonId,
     this.infoHash,
     this.directUrl,
     this.fileIndex,
+    this.fileName,
+    this.videoSizeBytes,
   });
 
   final String id;
@@ -430,9 +517,12 @@ class StreamSource {
   final String quality;
   final String sizeLabel;
   final bool isCached;
+  final String? addonId;
   final String? infoHash;
   final String? directUrl;
   final int? fileIndex;
+  final String? fileName;
+  final int? videoSizeBytes;
 
   bool get isDirectUrl => directUrl != null && directUrl!.isNotEmpty;
 
@@ -446,9 +536,12 @@ class StreamSource {
       quality: json['quality'] as String? ?? 'Unknown',
       sizeLabel: json['sizeLabel'] as String? ?? '',
       isCached: json['isCached'] as bool? ?? false,
+      addonId: json['addonId'] as String?,
       infoHash: json['infoHash'] as String?,
       directUrl: json['directUrl'] as String?,
       fileIndex: (json['fileIndex'] as num?)?.toInt(),
+      fileName: json['fileName'] as String?,
+      videoSizeBytes: (json['videoSizeBytes'] as num?)?.toInt(),
     );
   }
 
@@ -462,9 +555,12 @@ class StreamSource {
       'quality': quality,
       'sizeLabel': sizeLabel,
       'isCached': isCached,
+      'addonId': addonId,
       'infoHash': infoHash,
       'directUrl': directUrl,
       'fileIndex': fileIndex,
+      'fileName': fileName,
+      'videoSizeBytes': videoSizeBytes,
     };
   }
 }
@@ -480,6 +576,22 @@ class IndexerHealth {
   final bool isOnline;
   final int responseTime;
   final int streamCount;
+  final String? error;
+}
+
+class IndexerStatusDetail {
+  const IndexerStatusDetail({
+    required this.id,
+    required this.name,
+    required this.isOnline,
+    required this.responseTime,
+    this.error,
+  });
+
+  final String id;
+  final String name;
+  final bool isOnline;
+  final int responseTime;
   final String? error;
 }
 

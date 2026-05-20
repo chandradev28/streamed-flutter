@@ -200,10 +200,23 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       return Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(),
-        body: const Center(
-          child: Text(
-            'Could not load this title.',
-            style: TextStyle(color: AppColors.text),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const Text(
+                  'Could not load this title.',
+                  style: TextStyle(color: AppColors.text),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.tonal(
+                  onPressed: _loadDetail,
+                  child: const Text('Try again'),
+                ),
+              ],
+            ),
           ),
         ),
       );

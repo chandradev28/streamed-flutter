@@ -12,7 +12,7 @@ class StremioAddonsService {
   final LocalJsonStore _store;
 
   Future<List<AddonManifest>> getInstalledAddons() async {
-    final file = await _store.file();
+    final File file = await _store.file();
     if (!await file.exists()) {
       return const <AddonManifest>[];
     }
@@ -26,7 +26,9 @@ class StremioAddonsService {
       final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
       return decoded
           .map(
-            (dynamic item) => AddonManifest.fromJson(item as Map<String, dynamic>),
+            (dynamic item) => AddonManifest.fromJson(
+              item as Map<String, dynamic>,
+            ),
           )
           .toList(growable: false);
     } catch (_) {
@@ -34,27 +36,30 @@ class StremioAddonsService {
     }
   }
 
-  Future<AddonManifest> installAddon(String manifestUrl) async {
-    if (!manifestUrl.startsWith('http://') &&
-        !manifestUrl.startsWith('https://')) {
-      throw const FormatException('Addon URL must use http or https.');
-    }
-
-    final Uri rawUri = Uri.parse(
-      manifestUrl.endsWith('manifest.json')
-          ? manifestUrl
-          : '${manifestUrl.replaceAll(RegExp(r'/$'), '')}/manifest.json',
+  Future<bool> hasStreamAddons() async {
+    final List<AddonManifest> addons = await getInstalledAddons();
+    return addons.any(
+      (AddonManifest addon) => addon.enabled && addon.hasStreamResource,
     );
-    final Map<String, dynamic> payload = await _fetchJson(rawUri);
+  }
 
-    final String originalUrl = rawUri.toString();
-    final Uri normalized = rawUri.replace(path: rawUri.path.replaceAll(RegExp(r'manifest\.json$'), ''));
+  Future<List<AddonManifest>> getEnabledAddons() async {
+    final List<AddonManifest> addons = await getInstalledAddons();
+    return addons
+        .where((AddonManifest addon) => addon.enabled)
+        .toList(growable: false);
+  }
+
+  Future<AddonManifest> installAddon(String manifestUrl) async {
+    final Uri manifestUri = _normalizeManifestUri(manifestUrl);
+    final Map<String, dynamic> payload = await _fetchJson(manifestUri);
+
     final AddonManifest addon = AddonManifest.fromJson(
       <String, dynamic>{
         ...payload,
-        'id': (payload['id'] as String?) ?? _makeAddonId(originalUrl),
-        'url': normalized.toString().replaceAll(RegExp(r'/$'), ''),
-        'originalUrl': originalUrl,
+        'id': (payload['id'] as String?) ?? _makeAddonId(manifestUri.toString()),
+        'url': _stripManifestPath(manifestUri).toString().replaceAll(RegExp(r'/$'), ''),
+        'originalUrl': manifestUri.toString(),
       },
     );
 
@@ -76,14 +81,68 @@ class StremioAddonsService {
     );
   }
 
+  Future<void> setAddonEnabled(String addonId, bool enabled) async {
+    final List<AddonManifest> installed = await getInstalledAddons();
+    await _writeAddons(
+      installed
+          .map(
+            (AddonManifest addon) => addon.id == addonId
+                ? AddonManifest.fromJson(
+                    <String, dynamic>{
+                      ...addon.toJson(),
+                      'enabled': enabled,
+                    },
+                  )
+                : addon,
+          )
+          .toList(growable: false),
+    );
+  }
+
+  Future<AddonManifest?> refreshAddon(String addonId) async {
+    final List<AddonManifest> installed = await getInstalledAddons();
+    final AddonManifest? existing = installed.cast<AddonManifest?>().firstWhere(
+          (AddonManifest? addon) => addon?.id == addonId,
+          orElse: () => null,
+        );
+    if (existing == null) {
+      return null;
+    }
+
+    final AddonManifest refreshed = await installAddon(existing.originalUrl);
+    if (!refreshed.enabled) {
+      await setAddonEnabled(refreshed.id, existing.enabled);
+    } else if (!existing.enabled) {
+      await setAddonEnabled(refreshed.id, false);
+    }
+    final List<AddonManifest> addons = await getInstalledAddons();
+    return addons.cast<AddonManifest?>().firstWhere(
+          (AddonManifest? addon) => addon?.id == addonId,
+          orElse: () => null,
+        );
+  }
+
   Future<List<StreamSource>> getStreams({
     required String mediaType,
     required String streamId,
   }) async {
-    final List<AddonManifest> addons = await getInstalledAddons();
+    final AddonSearchResult result = await searchStreamsDetailed(
+      mediaType: mediaType,
+      streamId: streamId,
+    );
+    return result.streams;
+  }
+
+  Future<AddonSearchResult> searchStreamsDetailed({
+    required String mediaType,
+    required String streamId,
+  }) async {
+    final List<AddonManifest> addons = await getEnabledAddons();
     final String contentType = mediaType == 'tv' ? 'series' : 'movie';
     final List<StreamSource> results = <StreamSource>[];
     final Set<String> seen = <String>{};
+    final Map<String, int> sourceCounts = <String, int>{};
+    final Map<String, String> sourceErrors = <String, String>{};
 
     for (final AddonManifest addon in addons) {
       if (!addon.supportsContent(contentType, streamId)) {
@@ -95,66 +154,119 @@ class StremioAddonsService {
         final Map<String, dynamic> payload = await _fetchJson(streamUri);
         final List<dynamic> streams =
             payload['streams'] as List<dynamic>? ?? const <dynamic>[];
+        int addedForAddon = 0;
         for (final dynamic row in streams) {
-          final Map<String, dynamic> item = row as Map<String, dynamic>;
-          final String? directUrl = item['url'] as String?;
-          final String? infoHash = item['infoHash'] as String?;
-          if ((directUrl == null || directUrl.isEmpty) &&
-              (infoHash == null || infoHash.isEmpty)) {
-            continue;
-          }
-
-          final String description =
-              (item['description'] as String?) ?? (item['title'] as String?) ?? '';
-          final String label =
-              (item['name'] as String?) ?? (item['title'] as String?) ?? addon.name;
-          final String dedupeKey = infoHash ?? directUrl ?? label;
-          if (!seen.add('${addon.id}:$dedupeKey')) {
-            continue;
-          }
-
-          results.add(
-            StreamSource(
-              id: '${addon.id}:$dedupeKey',
-              provider: 'addon',
-              sourceDisplayName: addon.name,
-              title: label,
-              description: description,
-              quality: _extractQuality('$label $description'),
-              sizeLabel: _extractSize('$label $description'),
-              isCached: item['behaviorHints'] is Map<String, dynamic>
-                  ? ((item['behaviorHints'] as Map<String, dynamic>)['cached']
-                          as bool? ??
-                      false)
-                  : false,
-              infoHash: infoHash,
-              directUrl: directUrl,
-              fileIndex: (item['fileIdx'] as num?)?.toInt(),
-            ),
+          final StreamSource? source = _streamFromAddonRow(
+            addon,
+            row as Map<String, dynamic>,
           );
+          if (source == null) {
+            continue;
+          }
+
+          final String dedupeKey = source.infoHash?.toLowerCase() ??
+              source.directUrl?.toLowerCase() ??
+              source.id;
+          if (!seen.add(dedupeKey)) {
+            continue;
+          }
+          results.add(source);
+          addedForAddon += 1;
         }
-      } catch (_) {}
+        sourceCounts[addon.name] = addedForAddon;
+      } catch (error) {
+        sourceCounts[addon.name] = 0;
+        sourceErrors[addon.name] = error.toString();
+      }
     }
 
-    return results;
+    results.sort((StreamSource a, StreamSource b) {
+      if (a.isCached != b.isCached) {
+        return a.isCached ? -1 : 1;
+      }
+      if (a.isDirectUrl != b.isDirectUrl) {
+        return a.isDirectUrl ? -1 : 1;
+      }
+      return a.sourceDisplayName.compareTo(b.sourceDisplayName);
+    });
+
+    return AddonSearchResult(
+      streams: results,
+      diagnostics: SourceSearchDiagnostics(
+        sourceCounts: sourceCounts,
+        sourceErrors: sourceErrors,
+      ),
+    );
+  }
+
+  StreamSource? _streamFromAddonRow(
+    AddonManifest addon,
+    Map<String, dynamic> item,
+  ) {
+    final Map<String, dynamic> behaviorHints =
+        item['behaviorHints'] as Map<String, dynamic>? ??
+            const <String, dynamic>{};
+    final String? directUrl = _readString(item['url']);
+    final String? infoHash = _normalizeInfoHash(
+      _readString(item['infoHash']) ??
+          _extractInfoHashFromSources(item['sources']) ??
+          _extractInfoHashFromBehaviorHints(behaviorHints),
+    );
+    if ((directUrl == null || directUrl.isEmpty) &&
+        (infoHash == null || infoHash.isEmpty) &&
+        _readString(item['ytId']) == null) {
+      return null;
+    }
+
+    final String title = _readString(item['name']) ??
+        _readString(item['title']) ??
+        _readString(behaviorHints['filename']) ??
+        addon.name;
+    final String description = _readString(item['description']) ??
+        _readString(item['title']) ??
+        _readString(behaviorHints['filename']) ??
+        '';
+    final String text = '$title\n$description';
+    final bool cached = _isCached(text, directUrl, behaviorHints);
+    final String dedupeKey = infoHash ?? directUrl ?? title;
+
+    return StreamSource(
+      id: '${addon.id}:$dedupeKey',
+      provider: 'addon',
+      sourceDisplayName: addon.name,
+      title: title,
+      description: description,
+      quality: _extractQuality(text),
+      sizeLabel: _extractSize(text, behaviorHints['videoSize']),
+      isCached: cached,
+      addonId: addon.id,
+      infoHash: infoHash,
+      directUrl: directUrl,
+      fileIndex:
+          ((item['fileIdx'] ?? item['fileIndex']) as num?)?.toInt(),
+      fileName: _readString(behaviorHints['filename']),
+      videoSizeBytes: (behaviorHints['videoSize'] as num?)?.toInt(),
+    );
   }
 
   Future<void> _writeAddons(List<AddonManifest> addons) async {
-    final file = await _store.file();
+    final File file = await _store.file();
     await file.writeAsString(
-      jsonEncode(addons.map((AddonManifest addon) => addon.toJson()).toList()),
+      jsonEncode(
+        addons.map((AddonManifest addon) => addon.toJson()).toList(),
+      ),
     );
   }
 
   Future<Map<String, dynamic>> _fetchJson(Uri uri) async {
     final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 20);
+      ..connectionTimeout = const Duration(seconds: 30);
     try {
       final HttpClientRequest request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       request.headers.set(
         HttpHeaders.userAgentHeader,
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
       );
       final HttpClientResponse response = await request.close();
       final String raw = await response.transform(utf8.decoder).join();
@@ -165,17 +277,59 @@ class StremioAddonsService {
         );
       }
       return jsonDecode(raw) as Map<String, dynamic>;
+    } on FormatException {
+      throw const FormatException('Addon server returned invalid JSON.');
     } finally {
       client.close(force: true);
     }
+  }
+
+  Uri _normalizeManifestUri(String rawInput) {
+    final String trimmed = rawInput.trim();
+    if (trimmed.isEmpty) {
+      throw const FormatException('Paste a Stremio addon manifest URL first.');
+    }
+
+    String candidate = trimmed;
+    if (candidate.startsWith('stremio://')) {
+      candidate = 'https://${candidate.substring('stremio://'.length)}';
+    } else if (!candidate.startsWith('http://') &&
+        !candidate.startsWith('https://')) {
+      candidate = 'https://$candidate';
+    }
+
+    Uri uri;
+    try {
+      uri = Uri.parse(candidate);
+    } catch (_) {
+      throw const FormatException('That addon URL could not be parsed.');
+    }
+
+    if (uri.host.isEmpty) {
+      throw const FormatException('That addon URL is missing a valid host.');
+    }
+
+    String path = uri.path;
+    if (!path.endsWith('manifest.json')) {
+      path = path.replaceAll(RegExp(r'/$'), '');
+      path = path.isEmpty ? '/manifest.json' : '$path/manifest.json';
+    }
+
+    return uri.replace(path: path);
+  }
+
+  Uri _stripManifestPath(Uri uri) {
+    String path = uri.path.replaceAll(RegExp(r'manifest\.json$'), '');
+    path = path.replaceAll(RegExp(r'/$'), '');
+    return uri.replace(path: path);
   }
 
   Uri _buildStreamUri(AddonManifest addon, String contentType, String streamId) {
     final Uri originalUri = Uri.parse(addon.originalUrl);
     final Uri baseUri = Uri.parse(addon.url);
     return baseUri.replace(
-      path: '${baseUri.path}/stream/$contentType/$streamId.json'
-          .replaceAll('//', '/'),
+      path:
+          '${baseUri.path}/stream/$contentType/$streamId.json'.replaceAll('//', '/'),
       queryParameters: originalUri.queryParameters.isEmpty
           ? null
           : originalUri.queryParameters,
@@ -186,8 +340,19 @@ class StremioAddonsService {
     return url.replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-').toLowerCase();
   }
 
+  String? _readString(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    final String text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
   String _extractQuality(String text) {
-    final RegExp match = RegExp(r'(2160p|4k|1080p|720p|480p)', caseSensitive: false);
+    final RegExp match = RegExp(
+      r'(2160p|4k|1080p|720p|480p)',
+      caseSensitive: false,
+    );
     final RegExpMatch? result = match.firstMatch(text);
     if (result == null) {
       return 'Unknown';
@@ -197,8 +362,16 @@ class StremioAddonsService {
     return value == '2160P' ? '4K' : value;
   }
 
-  String _extractSize(String text) {
-    final RegExp match = RegExp(r'(\d+(?:\.\d+)?)\s?(GB|MB|TB)', caseSensitive: false);
+  String _extractSize(String text, dynamic videoSize) {
+    final int? bytes = (videoSize as num?)?.toInt();
+    if (bytes != null && bytes > 0) {
+      return _formatBytes(bytes);
+    }
+
+    final RegExp match = RegExp(
+      r'(\d+(?:\.\d+)?)\s?(GB|MB|TB)',
+      caseSensitive: false,
+    );
     final RegExpMatch? result = match.firstMatch(text);
     if (result == null) {
       return '';
@@ -206,4 +379,86 @@ class StremioAddonsService {
 
     return '${result.group(1)} ${result.group(2)!.toUpperCase()}';
   }
+
+  String _formatBytes(int bytes) {
+    const List<String> sizes = <String>['B', 'KB', 'MB', 'GB', 'TB'];
+    double value = bytes.toDouble();
+    int index = 0;
+    while (value >= 1024 && index < sizes.length - 1) {
+      value /= 1024;
+      index += 1;
+    }
+    final int decimals = value >= 10 || index == 0 ? 0 : 1;
+    return '${value.toStringAsFixed(decimals)} ${sizes[index]}';
+  }
+
+  bool _isCached(
+    String text,
+    String? directUrl,
+    Map<String, dynamic> behaviorHints,
+  ) {
+    if ((behaviorHints['cached'] as bool?) == true) {
+      return true;
+    }
+
+    final String haystack = '${directUrl ?? ''}\n$text';
+    return RegExp(
+      r'(cached|instant|torbox|real.?debrid|premiumize|alldebrid|debrid)',
+      caseSensitive: false,
+    ).hasMatch(haystack);
+  }
+
+  String? _extractInfoHashFromSources(dynamic sources) {
+    if (sources is! List<dynamic>) {
+      return null;
+    }
+    for (final dynamic source in sources) {
+      final String? value = _readString(source);
+      if (value == null) {
+        continue;
+      }
+      final String? hash = _extractInfoHash(value);
+      if (hash != null) {
+        return hash;
+      }
+    }
+    return null;
+  }
+
+  String? _extractInfoHashFromBehaviorHints(Map<String, dynamic> behaviorHints) {
+    final String? bingeGroup = _readString(behaviorHints['bingeGroup']);
+    return _extractInfoHash(bingeGroup);
+  }
+
+  String? _extractInfoHash(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    final RegExpMatch? match = RegExp(
+      r'([A-Fa-f0-9]{40})',
+      caseSensitive: false,
+    ).firstMatch(value);
+    return match?.group(1)?.toLowerCase();
+  }
+
+  String? _normalizeInfoHash(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    final String? extracted = _extractInfoHash(value);
+    if (extracted != null) {
+      return extracted;
+    }
+    return value.toLowerCase();
+  }
+}
+
+class AddonSearchResult {
+  const AddonSearchResult({
+    required this.streams,
+    required this.diagnostics,
+  });
+
+  final List<StreamSource> streams;
+  final SourceSearchDiagnostics diagnostics;
 }

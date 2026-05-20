@@ -1,6 +1,9 @@
 import 'package:flutter_app/src/models/tmdb_media_models.dart';
+import 'package:flutter_app/src/models/torbox_models.dart';
 import 'package:flutter_app/src/models/watch_history_item.dart';
+import 'package:flutter_app/src/services/app_settings_repository.dart';
 import 'package:flutter_app/src/services/tmdb_media_service.dart';
+import 'package:flutter_app/src/services/torbox_api_service.dart';
 import 'package:flutter_app/src/services/watch_history_repository.dart';
 
 class FakeMediaService implements MediaCatalogService {
@@ -117,4 +120,122 @@ class FakeWatchHistoryRepository implements ContinueWatchingRepository {
 
   @override
   Future<void> saveProgress(WatchHistoryItem item) async {}
+}
+
+class FakeAppSettingsRepository extends AppSettingsRepository {
+  FakeAppSettingsRepository({
+    AppSettings initialSettings = const AppSettings(),
+  }) : _settings = initialSettings;
+
+  AppSettings _settings;
+
+  @override
+  Future<void> clearTorBoxApiKey() async {
+    _settings = _settings.copyWith(clearApiKey: true);
+  }
+
+  @override
+  Future<DnsProvider> getDnsProvider() async => _settings.dnsProvider;
+
+  @override
+  Future<String?> getTorBoxApiKey() async => _settings.torBoxApiKey;
+
+  @override
+  Future<bool> getUseAddons() async => _settings.useAddons;
+
+  @override
+  Future<AppSettings> loadSettings() async => _settings;
+
+  @override
+  Future<void> saveDnsProvider(DnsProvider provider) async {
+    _settings = _settings.copyWith(dnsProvider: provider);
+  }
+
+  @override
+  Future<void> saveSettings(AppSettings settings) async {
+    _settings = settings;
+  }
+
+  @override
+  Future<void> saveTorBoxApiKey(String apiKey) async {
+    _settings = _settings.copyWith(torBoxApiKey: apiKey);
+  }
+
+  @override
+  Future<void> saveUseAddons(bool value) async {
+    _settings = _settings.copyWith(useAddons: value);
+  }
+}
+
+class FakeTorBoxApiService extends TorBoxApiService {
+  FakeTorBoxApiService({
+    required this.user,
+    this.torrents = const <TorBoxTorrent>[],
+    this.shouldThrow = false,
+    super.settingsRepository,
+  }) : _settingsRepository = settingsRepository;
+
+  final TorBoxUser user;
+  final List<TorBoxTorrent> torrents;
+  final bool shouldThrow;
+  final AppSettingsRepository? _settingsRepository;
+
+  @override
+  Future<TorBoxAccountSnapshot> connectAndLoad(String apiKey) async {
+    if (shouldThrow) {
+      throw const TorBoxApiException(detail: 'Bad API key');
+    }
+    if (_settingsRepository != null) {
+      await _settingsRepository.saveTorBoxApiKey(apiKey);
+    }
+    return TorBoxAccountSnapshot(user: user, torrents: torrents);
+  }
+
+  @override
+  Future<TorBoxUser> getUserInfo({String? apiKeyOverride}) async {
+    if (shouldThrow) {
+      throw const TorBoxApiException(detail: 'Bad API key');
+    }
+    return user;
+  }
+
+  @override
+  Future<TorBoxTorrent?> getTorrentByHash(String hash) async {
+    for (final TorBoxTorrent torrent in torrents) {
+      if (torrent.hash == hash) {
+        return torrent;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<List<TorBoxTorrent>> getUserTorrents({
+    int? torrentId,
+    String? apiKeyOverride,
+  }) async {
+    if (shouldThrow) {
+      throw const TorBoxApiException(detail: 'Bad API key');
+    }
+    if (torrentId == null) {
+      return torrents;
+    }
+    return torrents
+        .where((TorBoxTorrent item) => item.id == torrentId)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<bool> isConfigured() async => true;
+
+  @override
+  Future<TorBoxAccountSnapshot> loadAccountSnapshot() async {
+    if (shouldThrow) {
+      throw const TorBoxApiException(detail: 'Bad API key');
+    }
+    return TorBoxAccountSnapshot(user: user, torrents: torrents);
+  }
+
+  @override
+  Future<bool> verifyApiKey({String? apiKeyOverride}) async => !shouldThrow;
 }

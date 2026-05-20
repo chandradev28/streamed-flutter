@@ -8,6 +8,16 @@ class StreamCatalogService {
 
   static const String _torrentioBaseUrl = 'https://torrentio.strem.fun';
 
+  static const List<_IndexerDefinition> _indexers = <_IndexerDefinition>[
+    _IndexerDefinition(id: '1337x', name: '1337x'),
+    _IndexerDefinition(id: 'yts', name: 'YTS'),
+    _IndexerDefinition(id: 'tpb', name: 'The Pirate Bay'),
+    _IndexerDefinition(id: 'rarbg', name: 'RARBG'),
+    _IndexerDefinition(id: 'eztv', name: 'EZTV'),
+    _IndexerDefinition(id: 'nyaa', name: 'Nyaa'),
+    _IndexerDefinition(id: 'kickass', name: 'KickassTorrents'),
+  ];
+
   Future<IndexerHealth> checkTorrentioHealth() async {
     final DateTime startedAt = DateTime.now();
     try {
@@ -30,6 +40,13 @@ class StreamCatalogService {
     }
   }
 
+  Future<List<IndexerStatusDetail>> checkIndexerStatuses() async {
+    final List<Future<IndexerStatusDetail>> tasks = _indexers
+        .map(( _IndexerDefinition indexer) => _probeIndexer(indexer))
+        .toList(growable: false);
+    return Future.wait(tasks);
+  }
+
   Future<List<StreamSource>> getBuiltInStreams({
     required String imdbId,
     required String mediaType,
@@ -50,21 +67,57 @@ class StreamCatalogService {
         .toList(growable: false);
   }
 
+  Future<IndexerStatusDetail> _probeIndexer(_IndexerDefinition indexer) async {
+    final DateTime startedAt = DateTime.now();
+    final Uri uri = Uri.parse(
+      '$_torrentioBaseUrl/${indexer.id}/stream/movie/tt0133093.json',
+    );
+    try {
+      final Map<String, dynamic> payload = await _fetchJson(uri);
+      final List<dynamic> streams =
+          payload['streams'] as List<dynamic>? ?? const <dynamic>[];
+      return IndexerStatusDetail(
+        id: indexer.id,
+        name: indexer.name,
+        isOnline: streams.isNotEmpty,
+        responseTime: DateTime.now().difference(startedAt).inMilliseconds,
+      );
+    } catch (error) {
+      return IndexerStatusDetail(
+        id: indexer.id,
+        name: indexer.name,
+        isOnline: false,
+        responseTime: DateTime.now().difference(startedAt).inMilliseconds,
+        error: error.toString(),
+      );
+    }
+  }
+
   StreamSource? _streamFromTorrentio(Map<String, dynamic> json) {
-    final String? directUrl = json['url'] as String?;
-    final String? infoHash = json['infoHash'] as String?;
+    final Map<String, dynamic> behaviorHints =
+        json['behaviorHints'] as Map<String, dynamic>? ??
+            const <String, dynamic>{};
+    final String? directUrl = _readString(json['url']);
+    final String? infoHash = _normalizeInfoHash(
+      _readString(json['infoHash']) ??
+          _extractInfoHashFromBehaviorHints(behaviorHints) ??
+          _extractInfoHashFromSources(json['sources']),
+    );
     if ((directUrl == null || directUrl.isEmpty) &&
         (infoHash == null || infoHash.isEmpty)) {
       return null;
     }
 
-    final String title = (json['name'] as String?) ??
-        (json['title'] as String?) ??
+    final String title = _readString(json['name']) ??
+        _readString(json['title']) ??
+        _readString(behaviorHints['filename']) ??
         'Torrentio stream';
-    final String description = (json['description'] as String?) ??
-        (json['title'] as String?) ??
+    final String description = _readString(json['description']) ??
+        _readString(json['title']) ??
+        _readString(behaviorHints['filename']) ??
         '';
     final String text = '$title\n$description';
+    final bool cached = _isLikelyCached(text, directUrl, behaviorHints);
 
     return StreamSource(
       id: 'torrentio:${infoHash ?? directUrl}',
@@ -73,11 +126,14 @@ class StreamCatalogService {
       title: title,
       description: description,
       quality: _extractQuality(text),
-      sizeLabel: _extractSize(text),
-      isCached: _isLikelyCached(text, json),
+      sizeLabel: _extractSize(text, behaviorHints['videoSize']),
+      isCached: cached,
       infoHash: infoHash,
       directUrl: directUrl,
-      fileIndex: (json['fileIdx'] as num?)?.toInt(),
+      fileIndex:
+          ((json['fileIdx'] ?? json['fileIndex']) as num?)?.toInt(),
+      fileName: _readString(behaviorHints['filename']),
+      videoSizeBytes: (behaviorHints['videoSize'] as num?)?.toInt(),
     );
   }
 
@@ -87,6 +143,10 @@ class StreamCatalogService {
     try {
       final HttpClientRequest request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
+      );
       final HttpClientResponse response = await request.close();
       final String raw = await response.transform(utf8.decoder).join();
       if (response.statusCode != HttpStatus.ok) {
@@ -101,6 +161,14 @@ class StreamCatalogService {
     }
   }
 
+  String? _readString(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    final String text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
   String _extractQuality(String text) {
     final RegExp match =
         RegExp(r'(2160p|4k|1080p|720p|480p)', caseSensitive: false);
@@ -113,7 +181,12 @@ class StreamCatalogService {
     return value == '2160P' ? '4K' : value;
   }
 
-  String _extractSize(String text) {
+  String _extractSize(String text, dynamic videoSize) {
+    final int? bytes = (videoSize as num?)?.toInt();
+    if (bytes != null && bytes > 0) {
+      return _formatBytes(bytes);
+    }
+
     final RegExp match =
         RegExp(r'(\d+(?:\.\d+)?)\s?(GB|MB|TB)', caseSensitive: false);
     final RegExpMatch? result = match.firstMatch(text);
@@ -124,16 +197,79 @@ class StreamCatalogService {
     return '${result.group(1)} ${result.group(2)!.toUpperCase()}';
   }
 
-  bool _isLikelyCached(String text, Map<String, dynamic> json) {
-    if (json['behaviorHints'] is Map<String, dynamic>) {
-      if (((json['behaviorHints'] as Map<String, dynamic>)['cached']) == true) {
-        return true;
-      }
+  String _formatBytes(int bytes) {
+    const List<String> sizes = <String>['B', 'KB', 'MB', 'GB', 'TB'];
+    double value = bytes.toDouble();
+    int index = 0;
+    while (value >= 1024 && index < sizes.length - 1) {
+      value /= 1024;
+      index += 1;
+    }
+    final int decimals = value >= 10 || index == 0 ? 0 : 1;
+    return '${value.toStringAsFixed(decimals)} ${sizes[index]}';
+  }
+
+  bool _isLikelyCached(
+    String text,
+    String? directUrl,
+    Map<String, dynamic> behaviorHints,
+  ) {
+    if ((behaviorHints['cached'] as bool?) == true) {
+      return true;
     }
 
+    final String haystack = '${directUrl ?? ''}\n$text';
     return RegExp(
-      r'(cached|instant|torbox|rd|real.?debrid|âš¡)',
+      r'(cached|instant|torbox|real.?debrid|premiumize|alldebrid|debrid)',
       caseSensitive: false,
-    ).hasMatch(text);
+    ).hasMatch(haystack);
   }
+
+  String? _extractInfoHashFromBehaviorHints(Map<String, dynamic> behaviorHints) {
+    final String? bingeGroup = _readString(behaviorHints['bingeGroup']);
+    return _extractInfoHash(bingeGroup);
+  }
+
+  String? _extractInfoHashFromSources(dynamic sources) {
+    if (sources is! List<dynamic>) {
+      return null;
+    }
+    for (final dynamic source in sources) {
+      final String? value = _readString(source);
+      final String? hash = _extractInfoHash(value);
+      if (hash != null) {
+        return hash;
+      }
+    }
+    return null;
+  }
+
+  String? _extractInfoHash(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    final RegExpMatch? match = RegExp(
+      r'([A-Fa-f0-9]{40})',
+      caseSensitive: false,
+    ).firstMatch(value);
+    return match?.group(1)?.toLowerCase();
+  }
+
+  String? _normalizeInfoHash(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    final String? extracted = _extractInfoHash(value);
+    return extracted ?? value.toLowerCase();
+  }
+}
+
+class _IndexerDefinition {
+  const _IndexerDefinition({
+    required this.id,
+    required this.name,
+  });
+
+  final String id;
+  final String name;
 }

@@ -31,43 +31,17 @@ class TmdbMediaService implements MediaCatalogService {
 
   @override
   Future<MediaDetail> getMediaDetail(int id, String mediaType) async {
-    if (mediaType == 'movie') {
-      final List<dynamic> results = await Future.wait<dynamic>(<Future<dynamic>>[
-        _fetch('/3/movie/$id'),
-        _fetch('/3/movie/$id/credits'),
-        _fetch('/3/movie/$id/similar'),
-        _fetch('/3/movie/$id/external_ids'),
-      ]);
+    final String resource = mediaType == 'movie' ? 'movie' : 'tv';
+    final Map<String, dynamic> detail = await _fetch(
+      '/3/$resource/$id',
+      const <String, String>{
+        'append_to_response': 'credits,similar,external_ids',
+      },
+    );
 
-      final Map<String, dynamic> detail = results[0] as Map<String, dynamic>;
-      final Map<String, dynamic> credits = results[1] as Map<String, dynamic>;
-      final Map<String, dynamic> similar = results[2] as Map<String, dynamic>;
-      final Map<String, dynamic> externalIds = results[3] as Map<String, dynamic>;
-      final Map<String, dynamic> merged = <String, dynamic>{
-        ...detail,
-        'imdb_id': detail['imdb_id'] ?? externalIds['imdb_id'],
-      };
-
-      return MediaDetail.fromJson(
-        merged,
-        mediaType: mediaType,
-        cast: _readCast(credits),
-        similarItems: _readMediaSummaryList(similar).take(8).toList(growable: false),
-      );
-    }
-
-    final List<dynamic> results = await Future.wait<dynamic>(<Future<dynamic>>[
-      _fetch('/3/tv/$id'),
-      _fetch('/3/tv/$id/credits'),
-      _fetch('/3/tv/$id/similar'),
-      _fetch('/3/tv/$id/external_ids'),
-    ]);
-
-    final Map<String, dynamic> detail = results[0] as Map<String, dynamic>;
-    final Map<String, dynamic> credits = results[1] as Map<String, dynamic>;
-    final Map<String, dynamic> similar = results[2] as Map<String, dynamic>;
-    final Map<String, dynamic> externalIds = results[3] as Map<String, dynamic>;
-
+    final Map<String, dynamic> externalIds =
+        detail['external_ids'] as Map<String, dynamic>? ??
+            const <String, dynamic>{};
     final Map<String, dynamic> merged = <String, dynamic>{
       ...detail,
       'imdb_id': detail['imdb_id'] ?? externalIds['imdb_id'],
@@ -76,8 +50,11 @@ class TmdbMediaService implements MediaCatalogService {
     return MediaDetail.fromJson(
       merged,
       mediaType: mediaType,
-      cast: _readCast(credits),
-      similarItems: _readMediaSummaryList(similar).take(8).toList(growable: false),
+      cast: _readCastFromDynamic(detail['credits']),
+      similarItems:
+          _readMediaSummaryListFromDynamic(detail['similar']).take(8).toList(
+                growable: false,
+              ),
     );
   }
 
@@ -135,11 +112,27 @@ class TmdbMediaService implements MediaCatalogService {
         .toList(growable: false);
   }
 
+  List<MediaSummary> _readMediaSummaryListFromDynamic(dynamic payload) {
+    if (payload is! Map<String, dynamic>) {
+      return const <MediaSummary>[];
+    }
+
+    return _readMediaSummaryList(payload);
+  }
+
   List<CastItem> _readCast(Map<String, dynamic> payload) {
     final List<dynamic> cast = payload['cast'] as List<dynamic>? ?? const <dynamic>[];
     return cast
         .take(10)
         .map((dynamic item) => CastItem.fromJson(item as Map<String, dynamic>))
         .toList(growable: false);
+  }
+
+  List<CastItem> _readCastFromDynamic(dynamic payload) {
+    if (payload is! Map<String, dynamic>) {
+      return const <CastItem>[];
+    }
+
+    return _readCast(payload);
   }
 }

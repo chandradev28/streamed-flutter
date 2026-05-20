@@ -6,6 +6,47 @@ import 'package:flutter_app/src/screens/playlist_screen.dart';
 import 'package:flutter_app/src/services/tmdb_playlist_service.dart';
 
 void main() {
+  testWidgets('does not overflow on a small phone viewport', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2160);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: PlaylistScreen(
+            playlistService: _FakePlaylistService(
+              <int, List<PlaylistMovie>>{
+                8: <PlaylistMovie>[
+                  PlaylistMovie(
+                    id: 1,
+                    title: 'Netflix Hit',
+                    posterPath: null,
+                    releaseDate: '2024-04-16',
+                  ),
+                  PlaylistMovie(
+                    id: 2,
+                    title: 'Another Pick',
+                    posterPath: null,
+                    releaseDate: '2024-05-01',
+                  ),
+                ],
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Playlist'), findsOneWidget);
+  });
+
   testWidgets('loads default provider content', (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
