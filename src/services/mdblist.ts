@@ -3,7 +3,8 @@
 
 import { dohFetch } from './doh';
 
-const API_KEY = process.env.EXPO_PUBLIC_MDBLIST_API_KEY || '';
+// API key hardcoded for production builds (not pushing to public repo)
+const API_KEY = 'ne6ww8x15xeislw8y0f9geida';
 const BASE_URL = 'https://api.mdblist.com';
 
 // MDBList Rating Types

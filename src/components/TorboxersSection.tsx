@@ -78,9 +78,10 @@ const TABS: Tab[] = [
 
 interface TorboxersSectionProps {
     onNavigate?: (screen: string) => void;
+    onGoToStreamed?: () => void;
 }
 
-export const TorboxersSection = ({ onNavigate }: TorboxersSectionProps) => {
+export const TorboxersSection = ({ onNavigate, onGoToStreamed }: TorboxersSectionProps) => {
     const navigation = useNavigation<any>();
     const [activeTab, setActiveTab] = useState<TabId>('search');
     const [searchQuery, setSearchQuery] = useState('');
@@ -1323,6 +1324,18 @@ export const TorboxersSection = ({ onNavigate }: TorboxersSectionProps) => {
 
     const renderSettingsContent = () => (
         <>
+            {/* Go to Streamed Button */}
+            {onGoToStreamed && (
+                <TouchableOpacity
+                    style={styles.goToStreamedButton}
+                    activeOpacity={0.8}
+                    onPress={onGoToStreamed}
+                >
+                    <ArrowLeft color="#fff" size={20} />
+                    <Text style={styles.goToStreamedText}>Go to Streamed</Text>
+                </TouchableOpacity>
+            )}
+
             {/* Settings Header Banner */}
             <View style={styles.settingsBanner}>
                 <View style={styles.settingsBannerIcon}>
@@ -4444,5 +4457,22 @@ const styles = StyleSheet.create({
     actionModalCloseText: {
         color: '#9CA3AF',
         fontSize: 14,
+    },
+    goToStreamedButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+        paddingVertical: 14,
+        paddingHorizontal: 20,
+        borderRadius: 16,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(59, 130, 246, 0.3)',
+        gap: 12,
+    },
+    goToStreamedText: {
+        color: '#3B82F6',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });

@@ -49,24 +49,7 @@
       "usesCleartextTraffic": true,
       "package": "com.fantomthief1999.streamed",
       "permissions": [
-        "android.permission.INTERNET",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "android.permission.WAKE_LOCK"
-      ],
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "data": [
-            {
-              "scheme": "trackplayer"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        }
+        "android.permission.INTERNET"
       ]
     },
     "web": {

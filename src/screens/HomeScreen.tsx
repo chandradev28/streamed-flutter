@@ -10,7 +10,6 @@ import { MovieCarousel } from '../components/MovieCarousel';
 import { ContinueWatchingCard } from '../components/ContinueWatchingCard';
 import { NewReleasedSection } from '../components/NewReleasedSection';
 import { MenuOverlay } from '../components/MenuOverlay';
-import { TorboxersSection } from '../components/TorboxersSection';
 import { Home, MonitorPlay, Search, FolderOpen, ChevronRight } from 'lucide-react-native';
 import { PlaylistScreen } from './PlaylistScreen';
 import { SearchScreen } from './SearchScreen';
@@ -18,7 +17,6 @@ import { LibraryScreen } from './LibraryScreen';
 import { ProfileScreen } from './ProfileScreen';
 
 type Tab = 'Home' | 'Playlist' | 'Search' | 'Library';
-type SourceMode = 'streamed' | 'torboxers';
 
 // Header height constant for dynamic spacing
 const HEADER_HEIGHT = 68;
@@ -29,11 +27,10 @@ export const HomeScreen = () => {
     const [currentTab, setCurrentTab] = useState<Tab>('Home');
     const [showProfile, setShowProfile] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
-    const [sourceMode, setSourceMode] = useState<SourceMode>('streamed');
 
     const handleMenuNavigate = (screenId: string) => {
-        if (screenId === 'music') {
-            navigation.navigate('MusicHome');
+        if (screenId === 'torboxers') {
+            navigation.navigate('TorBoxers');
         } else if (screenId === 'indexers') {
             navigation.navigate('IndexerStatus');
         } else if (screenId === 'addons') {
@@ -56,47 +53,41 @@ export const HomeScreen = () => {
             return <LibraryScreen />;
         }
 
-        // Home Content - switches between Streamed and Torboxers based on capsule
+        // Home Content - Streamed only
         return (
             <ScreenWrapper style={styles.screenWrapper}>
                 <HeaderNav
                     onProfilePress={() => setShowProfile(true)}
                     onMenuPress={() => setShowMenu(true)}
-                    sourceMode={sourceMode}
-                    onSourceModeChange={setSourceMode}
                 />
 
-                {sourceMode === 'streamed' ? (
-                    <ScrollView
-                        contentContainerStyle={styles.scrollContent}
-                        style={styles.scrollView}
-                        showsVerticalScrollIndicator={false}
-                    >
-                        {/* Dynamic spacer for fixed Header based on safe area */}
-                        <View style={{ height: insets.top + HEADER_HEIGHT }} />
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    style={styles.scrollView}
+                    showsVerticalScrollIndicator={false}
+                >
+                    {/* Dynamic spacer for fixed Header based on safe area */}
+                    <View style={{ height: insets.top + HEADER_HEIGHT }} />
 
-                        <MovieCarousel />
+                    <MovieCarousel />
 
-                        {/* Continue Watching Section */}
-                        <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>Continue Watching</Text>
-                            <ChevronRight color={Colors.dark.text} size={20} />
-                        </View>
-                        <ContinueWatchingCard />
+                    {/* Continue Watching Section */}
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Continue Watching</Text>
+                        <ChevronRight color={Colors.dark.text} size={20} />
+                    </View>
+                    <ContinueWatchingCard />
 
-                        {/* New Released Section */}
-                        <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>New Released</Text>
-                            <ChevronRight color={Colors.dark.text} size={20} />
-                        </View>
-                        <NewReleasedSection />
+                    {/* New Released Section */}
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>New Released</Text>
+                        <ChevronRight color={Colors.dark.text} size={20} />
+                    </View>
+                    <NewReleasedSection />
 
-                        {/* Spacer for Bottom Nav */}
-                        <View style={{ height: 100 }} />
-                    </ScrollView>
-                ) : (
-                    <TorboxersSection onNavigate={(screen) => navigation.navigate(screen)} />
-                )}
+                    {/* Spacer for Bottom Nav */}
+                    <View style={{ height: 100 }} />
+                </ScrollView>
             </ScreenWrapper>
         );
     };
@@ -117,66 +108,64 @@ export const HomeScreen = () => {
                 onNavigate={handleMenuNavigate}
             />
 
-            {/* Bottom Navigation Footer - Glass Effect (hidden in Torboxers mode) */}
-            {!(currentTab === 'Home' && sourceMode === 'torboxers') && (
-                <View style={styles.footerContainer}>
-                    <BlurView intensity={60} tint="dark" style={styles.footerBlur}>
-                        <View style={styles.footerGradient}>
-                            <View style={styles.tabBar}>
-                                <TouchableOpacity
-                                    style={[styles.tabItem, currentTab === 'Home' && styles.tabItemActive]}
-                                    onPress={() => setCurrentTab('Home')}
-                                >
-                                    <View style={currentTab === 'Home' ? styles.tabIconActive : styles.tabIcon}>
-                                        <Home
-                                            color={currentTab === 'Home' ? '#1a1a1a' : Colors.dark.textSecondary}
-                                            size={22}
-                                            fill={currentTab === 'Home' ? '#1a1a1a' : 'transparent'}
-                                        />
-                                    </View>
-                                    <Text style={[styles.tabLabel, currentTab === 'Home' && styles.tabLabelActive]}>Home</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.tabItem, currentTab === 'Playlist' && styles.tabItemActive]}
-                                    onPress={() => setCurrentTab('Playlist')}
-                                >
-                                    <View style={currentTab === 'Playlist' ? styles.tabIconActive : styles.tabIcon}>
-                                        <MonitorPlay
-                                            color={currentTab === 'Playlist' ? '#1a1a1a' : Colors.dark.textSecondary}
-                                            size={22}
-                                        />
-                                    </View>
-                                    <Text style={[styles.tabLabel, currentTab === 'Playlist' && styles.tabLabelActive]}>Playlist</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.tabItem, currentTab === 'Search' && styles.tabItemActive]}
-                                    onPress={() => setCurrentTab('Search')}
-                                >
-                                    <View style={currentTab === 'Search' ? styles.tabIconActive : styles.tabIcon}>
-                                        <Search
-                                            color={currentTab === 'Search' ? '#1a1a1a' : Colors.dark.textSecondary}
-                                            size={22}
-                                        />
-                                    </View>
-                                    <Text style={[styles.tabLabel, currentTab === 'Search' && styles.tabLabelActive]}>Search</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.tabItem, currentTab === 'Library' && styles.tabItemActive]}
-                                    onPress={() => setCurrentTab('Library')}
-                                >
-                                    <View style={currentTab === 'Library' ? styles.tabIconActive : styles.tabIcon}>
-                                        <FolderOpen
-                                            color={currentTab === 'Library' ? '#1a1a1a' : Colors.dark.textSecondary}
-                                            size={22}
-                                        />
-                                    </View>
-                                    <Text style={[styles.tabLabel, currentTab === 'Library' && styles.tabLabelActive]}>Library</Text>
-                                </TouchableOpacity>
-                            </View>
+            {/* Bottom Navigation Footer - Glass Effect */}
+            <View style={styles.footerContainer}>
+                <BlurView intensity={60} tint="dark" style={styles.footerBlur}>
+                    <View style={styles.footerGradient}>
+                        <View style={styles.tabBar}>
+                            <TouchableOpacity
+                                style={[styles.tabItem, currentTab === 'Home' && styles.tabItemActive]}
+                                onPress={() => setCurrentTab('Home')}
+                            >
+                                <View style={currentTab === 'Home' ? styles.tabIconActive : styles.tabIcon}>
+                                    <Home
+                                        color={currentTab === 'Home' ? '#1a1a1a' : Colors.dark.textSecondary}
+                                        size={22}
+                                        fill={currentTab === 'Home' ? '#1a1a1a' : 'transparent'}
+                                    />
+                                </View>
+                                <Text style={[styles.tabLabel, currentTab === 'Home' && styles.tabLabelActive]}>Home</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.tabItem, currentTab === 'Playlist' && styles.tabItemActive]}
+                                onPress={() => setCurrentTab('Playlist')}
+                            >
+                                <View style={currentTab === 'Playlist' ? styles.tabIconActive : styles.tabIcon}>
+                                    <MonitorPlay
+                                        color={currentTab === 'Playlist' ? '#1a1a1a' : Colors.dark.textSecondary}
+                                        size={22}
+                                    />
+                                </View>
+                                <Text style={[styles.tabLabel, currentTab === 'Playlist' && styles.tabLabelActive]}>Playlist</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.tabItem, currentTab === 'Search' && styles.tabItemActive]}
+                                onPress={() => setCurrentTab('Search')}
+                            >
+                                <View style={currentTab === 'Search' ? styles.tabIconActive : styles.tabIcon}>
+                                    <Search
+                                        color={currentTab === 'Search' ? '#1a1a1a' : Colors.dark.textSecondary}
+                                        size={22}
+                                    />
+                                </View>
+                                <Text style={[styles.tabLabel, currentTab === 'Search' && styles.tabLabelActive]}>Search</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.tabItem, currentTab === 'Library' && styles.tabItemActive]}
+                                onPress={() => setCurrentTab('Library')}
+                            >
+                                <View style={currentTab === 'Library' ? styles.tabIconActive : styles.tabIcon}>
+                                    <FolderOpen
+                                        color={currentTab === 'Library' ? '#1a1a1a' : Colors.dark.textSecondary}
+                                        size={22}
+                                    />
+                                </View>
+                                <Text style={[styles.tabLabel, currentTab === 'Library' && styles.tabLabelActive]}>Library</Text>
+                            </TouchableOpacity>
                         </View>
-                    </BlurView>
-                </View>
-            )}
+                    </View>
+                </BlurView>
+            </View>
 
         </View>
     );
@@ -189,7 +178,7 @@ const styles = StyleSheet.create({
     },
     screenWrapper: {
         backgroundColor: Colors.dark.background,
-        paddingTop: 0, // Override wrapper padding if needed
+        paddingTop: 0,
     },
     scrollView: {
         flex: 1,
@@ -232,7 +221,6 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.1)',
         borderRadius: 32,
-        // Shadow for floating effect
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.35,

@@ -15,7 +15,7 @@ import {
     Wifi,
     Plug,
     ChevronRight,
-    Music2,
+    Box,
 } from 'lucide-react-native';
 
 interface MenuOverlayProps {
@@ -25,7 +25,7 @@ interface MenuOverlayProps {
 }
 
 const menuItems = [
-    { id: 'music', label: 'This Is Music', icon: Music2, description: 'Stream lossless Tidal music', accent: '#10B981' },
+    { id: 'torboxers', label: 'TorBoxers', icon: Box, description: 'TorBox debrid client & downloads', accent: '#F59E0B' },
     { id: 'indexers', label: 'Indexer Status', icon: Wifi, description: 'Check Torrentio indexer health' },
     { id: 'addons', label: 'Stream Addons', icon: Plug, description: 'Configure Torrentio, Comet & more' },
     { id: 'settings', label: 'App Settings', icon: Settings, description: 'General preferences' },

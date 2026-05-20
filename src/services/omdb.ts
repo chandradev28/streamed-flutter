@@ -3,7 +3,8 @@
 // API Key: Free tier - 1000 requests/day
 // Uses direct fetch (no proxy) for better reliability
 
-const API_KEY = process.env.EXPO_PUBLIC_OMDB_API_KEY || '';
+// API key hardcoded for production builds (not pushing to public repo)
+const API_KEY = '4ab1ae59';
 const BASE_URL = 'https://www.omdbapi.com';
 
 export interface OMDBRatings {

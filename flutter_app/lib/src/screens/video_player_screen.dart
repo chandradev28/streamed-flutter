@@ -1,0 +1,772 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
+
+import '../models/torbox_models.dart';
+import '../models/watch_history_item.dart';
+import '../services/torbox_api_service.dart';
+import '../services/watch_history_repository.dart';
+import '../theme/app_colors.dart';
+
+class VideoPlayerScreen extends StatefulWidget {
+  VideoPlayerScreen({
+    super.key,
+    required this.title,
+    this.posterUrl,
+    this.tmdbId,
+    this.mediaType,
+    this.seasonNumber,
+    this.episodeNumber,
+    this.episodeName,
+    this.torrentHash,
+    this.torrentId,
+    this.initialVideoUrl,
+    this.initialFiles = const <TorBoxTorrentFile>[],
+    this.initialFileId,
+    this.startPositionMs,
+    this.provider,
+    this.streamHeaders = const <String, String>{},
+    TorBoxApiService? torBoxApiService,
+    ContinueWatchingRepository? watchHistoryRepository,
+  })  : torBoxApiService = torBoxApiService ?? TorBoxApiService(),
+        watchHistoryRepository =
+            watchHistoryRepository ?? WatchHistoryRepository();
+
+  final String title;
+  final String? posterUrl;
+  final int? tmdbId;
+  final String? mediaType;
+  final int? seasonNumber;
+  final int? episodeNumber;
+  final String? episodeName;
+  final String? torrentHash;
+  final int? torrentId;
+  final String? initialVideoUrl;
+  final List<TorBoxTorrentFile> initialFiles;
+  final int? initialFileId;
+  final int? startPositionMs;
+  final String? provider;
+  final Map<String, String> streamHeaders;
+  final TorBoxApiService torBoxApiService;
+  final ContinueWatchingRepository watchHistoryRepository;
+
+  @override
+  State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
+}
+
+class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+  VideoPlayerController? _controller;
+  List<TorBoxTorrentFile> _files = const <TorBoxTorrentFile>[];
+  String? _resolvedUrl;
+  int? _activeFileId;
+  Timer? _progressTimer;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+  bool _loading = true;
+  bool _saving = false;
+  bool _initialized = false;
+  bool _showControls = true;
+  String? _error;
+  int _lastPersistedSecond = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _files = widget.initialFiles;
+    _resolvedUrl = widget.initialVideoUrl;
+    _activeFileId = widget.initialFileId;
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (_resolvedUrl != null && _resolvedUrl!.isNotEmpty) {
+      await _openResolvedMedia(_resolvedUrl!);
+      return;
+    }
+
+    final int? torrentId = widget.torrentId;
+    if (torrentId == null) {
+      setState(() {
+        _loading = false;
+        _error = 'No direct stream URL or TorBox torrent was provided.';
+      });
+      return;
+    }
+
+    try {
+      final List<TorBoxTorrentFile> files = _files.isNotEmpty
+          ? _files
+          : await widget.torBoxApiService.getTorrentFiles(torrentId);
+      if (!mounted) {
+        return;
+      }
+
+      final int? fileId =
+          _activeFileId ?? (files.isEmpty ? null : files.first.id);
+      setState(() {
+        _files = files;
+        _activeFileId = fileId;
+      });
+
+      if (fileId != null) {
+        await _resolveFile(fileId);
+      } else if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'This torrent does not expose playable files yet.';
+        });
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _loading = false;
+        _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _resolveFile(int fileId) async {
+    final int? torrentId = widget.torrentId;
+    if (torrentId == null) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+      _activeFileId = fileId;
+    });
+
+    final String? url = await widget.torBoxApiService.getQuickStreamUrl(
+      torrentId,
+      fileId,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    if (url == null || url.isEmpty) {
+      setState(() {
+        _loading = false;
+        _error = 'Could not resolve a stream URL for this file.';
+      });
+      return;
+    }
+
+    setState(() {
+      _resolvedUrl = url;
+    });
+
+    await _openResolvedMedia(url);
+  }
+
+  Future<void> _openResolvedMedia(String url) async {
+    try {
+      setState(() {
+        _loading = true;
+        _error = null;
+        _initialized = false;
+      });
+
+      _progressTimer?.cancel();
+      await _controller?.dispose();
+
+      final VideoPlayerController controller =
+          VideoPlayerController.networkUrl(
+        Uri.parse(url),
+        httpHeaders: widget.streamHeaders,
+      );
+      await controller.initialize();
+      await controller.setLooping(false);
+      await controller.play();
+
+      if (widget.startPositionMs != null && widget.startPositionMs! > 0) {
+        await controller.seekTo(Duration(milliseconds: widget.startPositionMs!));
+      }
+
+      controller.addListener(_handleControllerTick);
+      _progressTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => _handleControllerTick(),
+      );
+
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+
+      setState(() {
+        _controller = controller;
+        _initialized = true;
+        _loading = false;
+        _duration = controller.value.duration;
+        _position = controller.value.position;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _loading = false;
+        _initialized = false;
+        _error = error.toString();
+      });
+    }
+  }
+
+  void _handleControllerTick() {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null || !mounted) {
+      return;
+    }
+
+    final VideoPlayerValue value = controller.value;
+    setState(() {
+      _position = value.position;
+      _duration = value.duration;
+    });
+
+    if (value.hasError) {
+      setState(() {
+        _error = value.errorDescription ?? 'Video playback error.';
+      });
+    }
+
+    if (value.isCompleted) {
+      unawaited(_persistProgress(forceCompleted: true));
+      return;
+    }
+
+    if (value.position.inSeconds >= 10 &&
+        value.position.inSeconds != _lastPersistedSecond &&
+        value.position.inSeconds % 10 == 0) {
+      _lastPersistedSecond = value.position.inSeconds;
+      unawaited(_persistProgress());
+    }
+  }
+
+  Future<void> _persistProgress({bool forceCompleted = false}) async {
+    final int? tmdbId = widget.tmdbId;
+    final String? mediaType = widget.mediaType;
+    if (tmdbId == null || mediaType == null) {
+      return;
+    }
+
+    final Duration duration = _duration;
+    if (duration <= Duration.zero) {
+      return;
+    }
+
+    final double progress = forceCompleted
+        ? 100
+        : ((_position.inMilliseconds / duration.inMilliseconds) * 100)
+            .clamp(0, 100);
+
+    if (!forceCompleted &&
+        _position.inSeconds < 10 &&
+        (widget.startPositionMs ?? 0) <= 0) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _saving = true;
+      });
+    }
+
+    final String id = <String>[
+      tmdbId.toString(),
+      mediaType,
+      if (widget.seasonNumber != null) 's${widget.seasonNumber}',
+      if (widget.episodeNumber != null) 'e${widget.episodeNumber}',
+    ].join('_');
+
+    await widget.watchHistoryRepository.saveProgress(
+      WatchHistoryItem(
+        id: id,
+        tmdbId: tmdbId,
+        mediaType: mediaType,
+        title: widget.title,
+        posterPath: widget.posterUrl,
+        backdropPath: widget.posterUrl,
+        seasonNumber: widget.seasonNumber,
+        episodeNumber: widget.episodeNumber,
+        episodeName: widget.episodeName,
+        progress: progress,
+        currentTime:
+            forceCompleted ? duration.inMilliseconds : _position.inMilliseconds,
+        duration: duration.inMilliseconds,
+        lastWatched: DateTime.now().millisecondsSinceEpoch,
+        addedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _saving = false;
+    });
+  }
+
+  Future<void> _togglePlayPause() async {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+
+    if (controller.value.isPlaying) {
+      await controller.pause();
+    } else {
+      await controller.play();
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _seekRelative(int seconds) async {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+
+    final Duration target = controller.value.position + Duration(seconds: seconds);
+    final Duration clamped = target < Duration.zero
+        ? Duration.zero
+        : (target > controller.value.duration ? controller.value.duration : target);
+    await controller.seekTo(clamped);
+  }
+
+  void _showFileSelector() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: _files
+                .map(
+                  (TorBoxTorrentFile file) => ListTile(
+                    title: Text(
+                      file.displayName,
+                      style: const TextStyle(color: AppColors.text),
+                    ),
+                    subtitle: Text(
+                      _formatBytes(file.size),
+                      style: const TextStyle(color: AppColors.textMuted),
+                    ),
+                    trailing: file.id == _activeFileId
+                        ? const Icon(Icons.check, color: AppColors.text)
+                        : null,
+                    onTap: () async {
+                      Navigator.of(context).maybePop();
+                      await _resolveFile(file.id);
+                    },
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    unawaited(_persistProgress());
+    _progressTimer?.cancel();
+    _controller?.removeListener(_handleControllerTick);
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final VideoPlayerController? controller = _controller;
+    final bool isPlaying = controller?.value.isPlaying ?? false;
+    final bool isBuffering = controller?.value.isBuffering ?? false;
+    final double progress = _duration.inMilliseconds > 0
+        ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0, 1)
+        : 0;
+    final TorBoxTorrentFile? activeFile = _files.cast<TorBoxTorrentFile?>().firstWhere(
+          (TorBoxTorrentFile? file) => file?.id == _activeFileId,
+          orElse: () => null,
+        );
+
+    return PopScope(
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop) {
+          unawaited(_persistProgress());
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Player'),
+          actions: <Widget>[
+            if (_files.length > 1)
+              IconButton(
+                onPressed: _showFileSelector,
+                icon: const Icon(Icons.playlist_play_outlined),
+              ),
+          ],
+        ),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: <Widget>[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _showControls = !_showControls;
+                      });
+                    },
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(color: Colors.black),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: <Widget>[
+                          if (_initialized && controller != null)
+                            FittedBox(
+                              fit: BoxFit.contain,
+                              child: SizedBox(
+                                width: controller.value.size.width,
+                                height: controller.value.size.height,
+                                child: VideoPlayer(controller),
+                              ),
+                            ),
+                          if (_loading)
+                            const Center(
+                              child: CircularProgressIndicator(
+                                color: AppColors.text,
+                              ),
+                            ),
+                          if (_error != null)
+                            Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Text(
+                                  _error!,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Color(0xFFFCA5A5),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (_showControls && _initialized && controller != null)
+                            Positioned.fill(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.18),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: <Widget>[
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: <Widget>[
+                                        _OverlayControlButton(
+                                          icon: Icons.replay_10,
+                                          onTap: () => _seekRelative(-10),
+                                        ),
+                                        const SizedBox(width: 18),
+                                        _OverlayControlButton(
+                                          icon: isPlaying
+                                              ? Icons.pause_circle_filled
+                                              : Icons.play_circle_fill,
+                                          size: 68,
+                                          onTap: _togglePlayPause,
+                                        ),
+                                        const SizedBox(width: 18),
+                                        _OverlayControlButton(
+                                          icon: Icons.forward_10,
+                                          onTap: () => _seekRelative(10),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBackground,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      widget.title,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: <Widget>[
+                        _InfoChip(
+                          icon: isPlaying
+                              ? Icons.pause_circle_outline
+                              : Icons.play_circle_outline,
+                          label: isPlaying ? 'Playing' : 'Paused',
+                        ),
+                        if (isBuffering)
+                          const _InfoChip(
+                            icon: Icons.sync,
+                            label: 'Buffering',
+                          ),
+                        if (widget.provider != null)
+                          _InfoChip(
+                            icon: Icons.storage_outlined,
+                            label: widget.provider!,
+                          ),
+                        if (activeFile != null)
+                          _InfoChip(
+                            icon: Icons.folder_open_outlined,
+                            label: activeFile.displayName,
+                          ),
+                        if (widget.torrentHash != null &&
+                            widget.torrentHash!.isNotEmpty)
+                          _InfoChip(
+                            icon: Icons.tag_outlined,
+                            label: widget.torrentHash!.substring(
+                              0,
+                              widget.torrentHash!.length > 10
+                                  ? 10
+                                  : widget.torrentHash!.length,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                      style: const TextStyle(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 10),
+                    Slider(
+                      value: progress,
+                      onChanged: !_initialized || controller == null
+                          ? null
+                          : (double value) async {
+                              final int millis =
+                                  (_duration.inMilliseconds * value).round();
+                              await controller.seekTo(
+                                Duration(milliseconds: millis),
+                              );
+                            },
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: <Widget>[
+                        FilledButton.tonal(
+                          onPressed: _togglePlayPause,
+                          child: Text(isPlaying ? 'Pause' : 'Play'),
+                        ),
+                        FilledButton.tonal(
+                          onPressed: () => _seekRelative(-10),
+                          child: const Text('-10s'),
+                        ),
+                        FilledButton.tonal(
+                          onPressed: () => _seekRelative(10),
+                          child: const Text('+10s'),
+                        ),
+                        FilledButton.tonal(
+                          onPressed: _saving
+                              ? null
+                              : () async {
+                                  final ScaffoldMessengerState messenger =
+                                      ScaffoldMessenger.of(context);
+                                  await _persistProgress();
+                                  if (!mounted) {
+                                    return;
+                                  }
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Progress saved to Continue Watching.',
+                                      ),
+                                    ),
+                                  );
+                                },
+                          child: Text(_saving ? 'Saving...' : 'Save progress'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (_files.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 18),
+                const Text(
+                  'Files',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ..._files.map(
+                  (TorBoxTorrentFile file) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      tileColor: file.id == _activeFileId
+                          ? Colors.white.withOpacity(0.10)
+                          : AppColors.cardBackground,
+                      title: Text(
+                        file.displayName,
+                        style: const TextStyle(color: AppColors.text),
+                      ),
+                      subtitle: Text(
+                        _formatBytes(file.size),
+                        style: const TextStyle(color: AppColors.textMuted),
+                      ),
+                      trailing: IconButton(
+                        onPressed: _loading ? null : () => _resolveFile(file.id),
+                        icon: const Icon(
+                          Icons.play_arrow_rounded,
+                          color: AppColors.text,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDuration(Duration duration) {
+    if (duration <= Duration.zero) {
+      return '00:00';
+    }
+
+    final int totalSeconds = duration.inSeconds;
+    final int hours = totalSeconds ~/ 3600;
+    final int minutes = (totalSeconds % 3600) ~/ 60;
+    final int seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) {
+      return '0 B';
+    }
+
+    const List<String> sizes = <String>['B', 'KB', 'MB', 'GB', 'TB'];
+    double value = bytes.toDouble();
+    int index = 0;
+    while (value >= 1024 && index < sizes.length - 1) {
+      value /= 1024;
+      index += 1;
+    }
+
+    return '${value.toStringAsFixed(value >= 10 || index == 0 ? 0 : 1)} ${sizes[index]}';
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, color: AppColors.textMuted, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverlayControlButton extends StatelessWidget {
+  const _OverlayControlButton({
+    required this.icon,
+    required this.onTap,
+    this.size = 46,
+  });
+
+  final IconData icon;
+  final Future<void> Function() onTap;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withOpacity(0.42),
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Icon(icon, color: Colors.white, size: size * 0.58),
+        ),
+      ),
+    );
+  }
+}
