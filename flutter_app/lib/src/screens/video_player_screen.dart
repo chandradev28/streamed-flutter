@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/torbox_models.dart';
 import '../models/watch_history_item.dart';
+import '../services/episode_parser.dart';
 import '../services/torbox_api_service.dart';
 import '../services/watch_history_repository.dart';
 import '../theme/app_colors.dart';
@@ -24,6 +25,8 @@ class VideoPlayerScreen extends StatefulWidget {
     this.initialVideoUrl,
     this.initialFiles = const <TorBoxTorrentFile>[],
     this.initialFileId,
+    this.initialFileIndex,
+    this.initialFileName,
     this.startPositionMs,
     this.provider,
     this.streamHeaders = const <String, String>{},
@@ -45,6 +48,8 @@ class VideoPlayerScreen extends StatefulWidget {
   final String? initialVideoUrl;
   final List<TorBoxTorrentFile> initialFiles;
   final int? initialFileId;
+  final int? initialFileIndex;
+  final String? initialFileName;
   final int? startPositionMs;
   final String? provider;
   final Map<String, String> streamHeaders;
@@ -102,8 +107,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         return;
       }
 
-      final int? fileId =
-          _activeFileId ?? (files.isEmpty ? null : files.first.id);
+      final int? fileId = _preferredFileId(files);
       setState(() {
         _files = files;
         _activeFileId = fileId;
@@ -127,6 +131,73 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _error = error.toString();
       });
     }
+  }
+
+  int? _preferredFileId(List<TorBoxTorrentFile> files) {
+    if (files.isEmpty) {
+      return null;
+    }
+
+    final int? activeFileId = _activeFileId;
+    if (activeFileId != null &&
+        files.any((TorBoxTorrentFile file) => file.id == activeFileId)) {
+      return activeFileId;
+    }
+
+    final int? initialFileId = widget.initialFileId;
+    if (initialFileId != null &&
+        files.any((TorBoxTorrentFile file) => file.id == initialFileId)) {
+      return initialFileId;
+    }
+
+    final int? initialFileIndex = widget.initialFileIndex;
+    if (initialFileIndex != null &&
+        initialFileIndex >= 0 &&
+        initialFileIndex < files.length) {
+      return files[initialFileIndex].id;
+    }
+
+    final String? initialFileName = widget.initialFileName;
+    if (initialFileName != null && initialFileName.trim().isNotEmpty) {
+      final String normalizedTarget = _normalizeFileName(initialFileName);
+      for (final TorBoxTorrentFile file in files) {
+        if (_normalizeFileName(file.name) == normalizedTarget ||
+            _normalizeFileName(file.displayName) == normalizedTarget) {
+          return file.id;
+        }
+      }
+    }
+
+    if (widget.mediaType == 'tv' &&
+        widget.seasonNumber != null &&
+        widget.episodeNumber != null) {
+      final List<SeasonFileGroup> seasons = parseSeasonPack(files);
+      for (final SeasonFileGroup season in seasons) {
+        for (final ParsedEpisodeFile episode in season.episodes) {
+          if (episode.season == widget.seasonNumber &&
+              episode.episode == widget.episodeNumber &&
+              episode.originalIndex >= 0 &&
+              episode.originalIndex < files.length) {
+            return files[episode.originalIndex].id;
+          }
+        }
+      }
+    }
+
+    final List<int> videoIndices = getAllVideoFiles(files);
+    if (videoIndices.isNotEmpty) {
+      return files[videoIndices.first].id;
+    }
+
+    return files.first.id;
+  }
+
+  String _normalizeFileName(String value) {
+    return value
+        .split(RegExp(r'[/\\]'))
+        .last
+        .trim()
+        .toLowerCase();
   }
 
   Future<void> _resolveFile(int fileId) async {
@@ -401,6 +472,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           (TorBoxTorrentFile? file) => file?.id == _activeFileId,
           orElse: () => null,
         );
+    final List<SeasonFileGroup> parsedSeasons = parseSeasonPack(_files);
+    final List<SeasonFileGroup> seasonGroups = parsedSeasons
+        .where((SeasonFileGroup group) => group.season > 0)
+        .toList(growable: false);
+    final List<ParsedEpisodeFile> extras = parsedSeasons
+        .where((SeasonFileGroup group) => group.isExtras)
+        .expand((SeasonFileGroup group) => group.episodes)
+        .toList(growable: false);
+    final bool movieLikeFiles =
+        widget.mediaType == 'movie' || isMovieTorrent(_files);
+    final List<int> videoFileIndices = getAllVideoFiles(_files);
+    final Set<int> parsedIndices = <int>{
+      for (final SeasonFileGroup group in parsedSeasons)
+        for (final ParsedEpisodeFile episode in group.episodes) episode.originalIndex,
+    };
+    final List<int> unparsedVideoIndices = videoFileIndices
+        .where((int index) => !parsedIndices.contains(index))
+        .toList(growable: false);
 
     return PopScope(
       onPopInvokedWithResult: (bool didPop, Object? result) {
@@ -629,43 +718,112 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
               if (_files.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 18),
-                const Text(
-                  'Files',
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
+                if (!movieLikeFiles && seasonGroups.isNotEmpty) ...<Widget>[
+                  const Text(
+                    'Episodes',
+                    style: TextStyle(
+                      color: AppColors.text,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                ..._files.map(
-                  (TorBoxTorrentFile file) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      tileColor: file.id == _activeFileId
-                          ? Colors.white.withOpacity(0.10)
-                          : AppColors.cardBackground,
-                      title: Text(
-                        file.displayName,
-                        style: const TextStyle(color: AppColors.text),
-                      ),
-                      subtitle: Text(
-                        _formatBytes(file.size),
-                        style: const TextStyle(color: AppColors.textMuted),
-                      ),
-                      trailing: IconButton(
-                        onPressed: _loading ? null : () => _resolveFile(file.id),
-                        icon: const Icon(
-                          Icons.play_arrow_rounded,
-                          color: AppColors.text,
-                        ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Season packs are grouped by parsed episode numbers so you can jump into the right file.',
+                    style: TextStyle(color: AppColors.textMuted, height: 1.45),
+                  ),
+                  const SizedBox(height: 12),
+                  ...seasonGroups.map(
+                    (SeasonFileGroup group) => Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: _EpisodeGroupCard(
+                        title: 'Season ${group.season}',
+                        episodes: group.episodes,
+                        files: _files,
+                        activeFileId: _activeFileId,
+                        onSelectFile: _loading
+                            ? null
+                            : (ParsedEpisodeFile episode) => _resolveFile(
+                                  _files[episode.originalIndex].id,
+                                ),
                       ),
                     ),
                   ),
-                ),
+                ],
+                if (movieLikeFiles || unparsedVideoIndices.isNotEmpty) ...<Widget>[
+                  Text(
+                    movieLikeFiles ? 'Video files' : 'Other video files',
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...unparsedVideoIndices.map(
+                    (int index) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _FileTile(
+                        file: _files[index],
+                        active: _files[index].id == _activeFileId,
+                        onTap: _loading ? null : () => _resolveFile(_files[index].id),
+                        subtitle: _formatBytes(_files[index].size),
+                      ),
+                    ),
+                  ),
+                ],
+                if (extras.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 18),
+                  Text(
+                    movieLikeFiles ? 'Other files' : 'Extras',
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...extras.map(
+                    (ParsedEpisodeFile episode) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _FileTile(
+                        file: _files[episode.originalIndex],
+                        active: _files[episode.originalIndex].id == _activeFileId,
+                        onTap: _loading
+                            ? null
+                            : () => _resolveFile(_files[episode.originalIndex].id),
+                        leadingLabel: '#${episode.episode}',
+                        subtitle:
+                            '${episode.title} • ${_formatBytes(_files[episode.originalIndex].size)}',
+                      ),
+                    ),
+                  ),
+                ],
+                if (!movieLikeFiles &&
+                    seasonGroups.isEmpty &&
+                    extras.isEmpty &&
+                    _files.isNotEmpty) ...<Widget>[
+                  const Text(
+                    'Files',
+                    style: TextStyle(
+                      color: AppColors.text,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ..._files.map(
+                    (TorBoxTorrentFile file) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _FileTile(
+                        file: file,
+                        active: file.id == _activeFileId,
+                        onTap: _loading ? null : () => _resolveFile(file.id),
+                        subtitle: _formatBytes(file.size),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
@@ -704,6 +862,136 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     return '${value.toStringAsFixed(value >= 10 || index == 0 ? 0 : 1)} ${sizes[index]}';
   }
+}
+
+class _EpisodeGroupCard extends StatelessWidget {
+  const _EpisodeGroupCard({
+    required this.title,
+    required this.episodes,
+    required this.files,
+    required this.activeFileId,
+    required this.onSelectFile,
+  });
+
+  final String title;
+  final List<ParsedEpisodeFile> episodes;
+  final List<TorBoxTorrentFile> files;
+  final int? activeFileId;
+  final ValueChanged<ParsedEpisodeFile>? onSelectFile;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...episodes.map(
+            (ParsedEpisodeFile episode) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _FileTile(
+                file: files[episode.originalIndex],
+                active: files[episode.originalIndex].id == activeFileId,
+                onTap: onSelectFile == null ? null : () => onSelectFile!(episode),
+                leadingLabel: formatEpisodeLabel(episode.season, episode.episode),
+                subtitle:
+                    '${episode.title} • ${_formatBytesStatic(files[episode.originalIndex].size)}',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FileTile extends StatelessWidget {
+  const _FileTile({
+    required this.file,
+    required this.active,
+    required this.onTap,
+    required this.subtitle,
+    this.leadingLabel,
+  });
+
+  final TorBoxTorrentFile file;
+  final bool active;
+  final VoidCallback? onTap;
+  final String subtitle;
+  final String? leadingLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      tileColor:
+          active ? Colors.white.withOpacity(0.10) : AppColors.cardBackground,
+      leading: leadingLabel == null
+          ? null
+          : Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                leadingLabel!,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+      title: Text(
+        file.displayName,
+        style: const TextStyle(color: AppColors.text),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(color: AppColors.textMuted),
+      ),
+      trailing: IconButton(
+        onPressed: onTap,
+        icon: const Icon(
+          Icons.play_arrow_rounded,
+          color: AppColors.text,
+        ),
+      ),
+      onTap: onTap,
+    );
+  }
+}
+
+String _formatBytesStatic(int bytes) {
+  if (bytes <= 0) {
+    return '0 B';
+  }
+
+  const List<String> sizes = <String>['B', 'KB', 'MB', 'GB', 'TB'];
+  double value = bytes.toDouble();
+  int index = 0;
+  while (value >= 1024 && index < sizes.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+
+  return '${value.toStringAsFixed(value >= 10 || index == 0 ? 0 : 1)} ${sizes[index]}';
 }
 
 class _InfoChip extends StatelessWidget {

@@ -39,9 +39,22 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
+    expect(find.byKey(const ValueKey<String>('home-menu-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('home-profile-button')), findsOneWidget);
     expect(find.text('Streamed'), findsOneWidget);
-    expect(find.text('Open Torboxers'), findsOneWidget);
     expect(find.text('Top trending movies'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('home-menu-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Menu'), findsOneWidget);
+    expect(find.text('Torboxers'), findsOneWidget);
+    expect(find.text('Indexer Status'), findsOneWidget);
+    expect(find.text('Stream Addons'), findsOneWidget);
+    expect(find.text('App Settings'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pumpAndSettle();
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -320));
     await tester.pumpAndSettle();

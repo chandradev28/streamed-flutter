@@ -128,7 +128,6 @@ class _MagnetScreenState extends State<MagnetScreen> {
           torrentId: torrent.id,
           torrentHash: torrent.hash,
           initialFiles: torrent.files,
-          initialFileId: torrent.files.isNotEmpty ? torrent.files.first.id : null,
           provider: 'torbox',
         ),
       ),

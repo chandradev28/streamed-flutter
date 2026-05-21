@@ -6,7 +6,9 @@ import '../services/tmdb_image.dart';
 import '../services/tmdb_media_service.dart';
 import '../services/watch_history_repository.dart';
 import '../theme/app_colors.dart';
+import 'addons_screen.dart';
 import 'episode_screen.dart';
+import 'indexer_status_screen.dart';
 import 'movie_detail_screen.dart';
 import 'profile_screen.dart';
 import 'torboxers_screen.dart';
@@ -131,6 +133,136 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openProfile() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => ProfileScreen(),
+      ),
+    );
+  }
+
+  Future<void> _showMainMenu() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        final double maxHeight = MediaQuery.of(context).size.height * 0.88;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: Container(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0C0C0E),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                    child: Row(
+                      children: <Widget>[
+                        const Expanded(
+                          child: Text(
+                            'Menu',
+                            style: TextStyle(
+                              color: AppColors.text,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        _SquareHeaderButton(
+                          icon: Icons.close_rounded,
+                          onTap: () => Navigator.of(context).pop(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(height: 1, color: Colors.white.withOpacity(0.04)),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+                      children: <Widget>[
+                        _MenuActionTile(
+                          icon: Icons.rocket_launch_outlined,
+                          title: 'Torboxers',
+                          subtitle: 'Search streams and imported engines',
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            _openTorboxers();
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        _MenuActionTile(
+                          icon: Icons.wifi_tethering_rounded,
+                          title: 'Indexer Status',
+                          subtitle: 'Check Torrentio indexer health',
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            Navigator.of(this.context).push<void>(
+                              MaterialPageRoute<void>(
+                                builder: (BuildContext context) =>
+                                    const IndexerStatusScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        _MenuActionTile(
+                          icon: Icons.extension_outlined,
+                          title: 'Stream Addons',
+                          subtitle: 'Configure Torrentio, Comet & more',
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            Navigator.of(this.context).push<void>(
+                              MaterialPageRoute<void>(
+                                builder: (BuildContext context) =>
+                                    AddonsScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        _MenuActionTile(
+                          icon: Icons.settings_outlined,
+                          title: 'App Settings',
+                          subtitle:
+                              'TorBox account, library, and playback preferences',
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            _openProfile();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(height: 1, color: Colors.white.withOpacity(0.04)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                      child: Text(
+                        'Streamed v1.0.0',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.18),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -149,51 +281,56 @@ class _HomeScreenState extends State<HomeScreen> {
                   slivers: <Widget>[
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Row(
                               children: <Widget>[
+                                _SquareHeaderButton(
+                                  key: const ValueKey<String>('home-menu-button'),
+                                  icon: Icons.menu_rounded,
+                                  onTap: _showMainMenu,
+                                ),
                                 const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      Text(
-                                        'Streamed',
-                                        style: TextStyle(
-                                          color: AppColors.text,
-                                          fontSize: 28,
-                                          fontWeight: FontWeight.w800,
+                                  child: Padding(
+                                    padding: EdgeInsets.only(left: 14),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        Text(
+                                          'Streamed',
+                                          style: TextStyle(
+                                            color: AppColors.text,
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.w800,
+                                          ),
                                         ),
-                                      ),
-                                      SizedBox(height: 4),
-                                      Text(
-                                        'Browse titles, jump into Torboxers, and keep playback moving.',
-                                        style: TextStyle(
-                                          color: AppColors.textMuted,
-                                          height: 1.4,
+                                        SizedBox(height: 2),
+                                        Text(
+                                          'Movies, shows, and TorBox tools',
+                                          style: TextStyle(
+                                            color: AppColors.textMuted,
+                                            fontSize: 12,
+                                            height: 1.35,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 _SquareHeaderButton(
-                                  icon: Icons.person_outline,
-                                  onTap: () {
-                                    Navigator.of(context).push<void>(
-                                      MaterialPageRoute<void>(
-                                        builder: (BuildContext context) =>
-                                            ProfileScreen(),
-                                      ),
-                                    );
-                                  },
+                                  key: const ValueKey<String>(
+                                    'home-profile-button',
+                                  ),
+                                  icon: Icons.person_outline_rounded,
+                                  onTap: _openProfile,
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 18),
-                            _TorboxersHeroCard(onTap: _openTorboxers),
                           ],
                         ),
                       ),
@@ -272,7 +409,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                    const SliverToBoxAdapter(child: SizedBox(height: 132)),
                   ],
                 ),
         ),
@@ -283,6 +420,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class _SquareHeaderButton extends StatelessWidget {
   const _SquareHeaderButton({
+    super.key,
     required this.icon,
     required this.onTap,
   });
@@ -295,103 +433,65 @@ class _SquareHeaderButton extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 42,
-        height: 42,
+        child: Container(
+        width: 38,
+        height: 38,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.white.withOpacity(0.12)),
-          color: const Color(0xD91E1E23),
+          color: const Color(0xD9121217),
         ),
-        child: Icon(icon, color: AppColors.text, size: 22),
+        child: Icon(icon, color: AppColors.text, size: 20),
       ),
     );
   }
 }
 
-class _TorboxersHeroCard extends StatelessWidget {
-  const _TorboxersHeroCard({required this.onTap});
+class _MenuActionTile extends StatelessWidget {
+  const _MenuActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
 
+  final IconData icon;
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return ListTile(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
-      child: Ink(
-        padding: const EdgeInsets.all(20),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
+      leading: Container(
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: <Color>[
-              Color(0xFF2C3651),
-              Color(0xFF111827),
-              Color(0xFF09090B),
-            ],
-          ),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          color: Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Quick launch',
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Open Torboxers',
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Search streams, manage your saved playlist, and jump into the player from one place.',
-                    style: TextStyle(
-                      color: AppColors.textMuted,
-                      height: 1.45,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: const Icon(
-                Icons.arrow_outward_rounded,
-                color: AppColors.background,
-                size: 28,
-              ),
-            ),
-          ],
+        child: Icon(icon, color: AppColors.text, size: 20),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: AppColors.text,
+          fontWeight: FontWeight.w700,
         ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 12,
+          height: 1.35,
+        ),
+      ),
+      trailing: const Icon(
+        Icons.chevron_right_rounded,
+        color: AppColors.textMuted,
       ),
     );
   }

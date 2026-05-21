@@ -19,8 +19,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
+    expect(find.byKey(const ValueKey<String>('home-menu-button')), findsOneWidget);
     expect(find.text('Streamed'), findsOneWidget);
-    expect(find.text('Open Torboxers'), findsOneWidget);
     expect(find.text('Top trending movies'), findsOneWidget);
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -320));

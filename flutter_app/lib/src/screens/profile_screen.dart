@@ -201,7 +201,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           torrentId: torrent.id,
           torrentHash: torrent.hash,
           initialFiles: torrent.files,
-          initialFileId: file?.id ?? (torrent.files.isNotEmpty ? torrent.files.first.id : null),
+          initialFileId: file?.id,
           provider: 'torbox',
         ),
       ),

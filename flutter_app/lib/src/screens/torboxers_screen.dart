@@ -4,6 +4,7 @@ import '../models/engine_models.dart';
 import '../models/torbox_models.dart';
 import '../services/app_settings_repository.dart';
 import '../services/engine_runtime_service.dart';
+import '../services/episode_parser.dart';
 import '../services/stream_catalog_service.dart';
 import '../services/stremio_addons_service.dart';
 import '../services/torbox_api_service.dart';
@@ -102,6 +103,28 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
             source.sourceDisplayName == _selectedSource)
         .toList(growable: false);
   }
+
+  bool get _isEpisodeContext =>
+      widget.mediaType == 'tv' &&
+      widget.seasonNumber != null &&
+      widget.episodeNumber != null;
+
+  bool _isSeasonPackSource(StreamSource source) {
+    final String text = <String>[
+      source.title,
+      source.description,
+      if (source.fileName != null) source.fileName!,
+    ].join('\n');
+    return isSeasonPackTitle(text);
+  }
+
+  List<StreamSource> get _visibleEpisodeResults => _visibleResults
+      .where((StreamSource source) => !_isSeasonPackSource(source))
+      .toList(growable: false);
+
+  List<StreamSource> get _visibleSeasonPackResults => _visibleResults
+      .where((StreamSource source) => _isSeasonPackSource(source))
+      .toList(growable: false);
 
   List<String> get _availableEngineSources {
     final List<String> values = _engineResults
@@ -566,12 +589,52 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
           torrentHash: torrent.hash,
           torrentId: torrent.id,
           initialFiles: torrent.files,
-          initialFileId:
-              torrent.files.isNotEmpty ? torrent.files.first.id : null,
+          initialFileId: _preferredInitialFileId(torrent.files, source),
+          initialFileIndex: source.fileIndex,
+          initialFileName: source.fileName,
           provider: source.sourceDisplayName,
         ),
       ),
     );
+  }
+
+  int? _preferredInitialFileId(
+    List<TorBoxTorrentFile> files,
+    StreamSource source,
+  ) {
+    if (files.isEmpty) {
+      return null;
+    }
+
+    final int? fileIndex = source.fileIndex;
+    if (fileIndex != null && fileIndex >= 0 && fileIndex < files.length) {
+      return files[fileIndex].id;
+    }
+
+    final String? fileName = source.fileName;
+    if (fileName != null && fileName.trim().isNotEmpty) {
+      final String normalizedTarget = _normalizeFileName(fileName);
+      for (final TorBoxTorrentFile file in files) {
+        if (_normalizeFileName(file.name) == normalizedTarget ||
+            _normalizeFileName(file.displayName) == normalizedTarget) {
+          return file.id;
+        }
+      }
+    }
+
+    final List<int> videoIndices = getAllVideoFiles(files);
+    if (videoIndices.isNotEmpty) {
+      return files[videoIndices.first].id;
+    }
+    return files.first.id;
+  }
+
+  String _normalizeFileName(String value) {
+    return value
+        .split(RegExp(r'[/\\]'))
+        .last
+        .trim()
+        .toLowerCase();
   }
 
   void _openLibraryTorrent(TorBoxTorrent torrent) {
@@ -582,8 +645,6 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
           torrentHash: torrent.hash,
           torrentId: torrent.id,
           initialFiles: torrent.files,
-          initialFileId:
-              torrent.files.isNotEmpty ? torrent.files.first.id : null,
           provider: 'torbox',
         ),
       ),
@@ -708,6 +769,9 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
   }
 
   Widget _buildSearchTab() {
+    final List<StreamSource> episodeResults = _visibleEpisodeResults;
+    final List<StreamSource> seasonPackResults = _visibleSeasonPackResults;
+
     return RefreshIndicator(
       onRefresh: _search,
       child: ListView(
@@ -791,6 +855,48 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
             )
           else if (_results.isEmpty)
             _SearchEmptyState(message: _searchMessage)
+          else if (_isEpisodeContext) ...<Widget>[
+            if (episodeResults.isNotEmpty) ...<Widget>[
+              const _ResultSectionHeader(
+                title: 'Episode Sources',
+                subtitle: 'Single-episode matches and direct playable results.',
+              ),
+              const SizedBox(height: 10),
+              ...episodeResults.map(
+                (StreamSource source) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _SourceCard(
+                    source: source,
+                    onPlay: () => _playSource(source),
+                    onAddToPlaylist: () => _addToPlaylist(source),
+                    onAddToTorBox: () => _addToTorBox(source),
+                  ),
+                ),
+              ),
+            ],
+            if (seasonPackResults.isNotEmpty) ...<Widget>[
+              if (episodeResults.isNotEmpty) const SizedBox(height: 8),
+              const _ResultSectionHeader(
+                title: 'Season Packs',
+                subtitle:
+                    'Full-season or multi-episode torrents. Add or play them to pick episodes in the player.',
+              ),
+              const SizedBox(height: 10),
+              ...seasonPackResults.map(
+                (StreamSource source) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _SourceCard(
+                    source: source,
+                    onPlay: () => _playSource(source),
+                    onAddToPlaylist: () => _addToPlaylist(source),
+                    onAddToTorBox: () => _addToTorBox(source),
+                  ),
+                ),
+              ),
+            ],
+            if (episodeResults.isEmpty && seasonPackResults.isEmpty)
+              _SearchEmptyState(message: _searchMessage),
+          ]
           else
             ..._visibleResults.map(
               (StreamSource source) => Padding(
@@ -1498,6 +1604,14 @@ class _SourceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool seasonPack = isSeasonPackTitle(
+      <String>[
+        source.title,
+        source.description,
+        if (source.fileName != null) source.fileName!,
+      ].join('\n'),
+    );
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1532,6 +1646,7 @@ class _SourceCard extends StatelessWidget {
                         if (source.sizeLabel.isNotEmpty)
                           _HeaderChip(label: source.sizeLabel),
                         if (source.isCached) const _HeaderChip(label: 'Cached'),
+                        if (seasonPack) const _HeaderChip(label: 'Season pack'),
                         if (source.isDirectUrl)
                           const _HeaderChip(label: 'Direct URL'),
                       ],
@@ -1574,6 +1689,41 @@ class _SourceCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ResultSectionHeader extends StatelessWidget {
+  const _ResultSectionHeader({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          title,
+          style: const TextStyle(
+            color: AppColors.text,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            height: 1.45,
+          ),
+        ),
+      ],
     );
   }
 }
