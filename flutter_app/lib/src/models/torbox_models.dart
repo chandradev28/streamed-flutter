@@ -308,7 +308,8 @@ class AddonResource {
 
   factory AddonResource.fromDynamic(dynamic value) {
     if (value is String) {
-      return AddonResource(name: value, types: const <String>[], idPrefixes: const <String>[]);
+      return AddonResource(
+          name: value, types: const <String>[], idPrefixes: const <String>[]);
     }
 
     final Map<String, dynamic> json = value as Map<String, dynamic>;
@@ -425,7 +426,8 @@ class AddonManifest {
 
   factory AddonManifest.fromJson(Map<String, dynamic> json) {
     final Map<String, dynamic> behaviorHints =
-        json['behaviorHints'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+        json['behaviorHints'] as Map<String, dynamic>? ??
+            const <String, dynamic>{};
 
     return AddonManifest(
       id: (json['id'] as String?) ?? '',
@@ -468,7 +470,8 @@ class AddonManifest {
       'originalUrl': originalUrl,
       'types': types,
       'catalogs': catalogs.map((AddonCatalog item) => item.toJson()).toList(),
-      'resources': resources.map((AddonResource item) => item.toJson()).toList(),
+      'resources':
+          resources.map((AddonResource item) => item.toJson()).toList(),
       'idPrefixes': idPrefixes,
       'logo': logo,
       'background': background,
@@ -585,6 +588,7 @@ class IndexerStatusDetail {
     required this.name,
     required this.isOnline,
     required this.responseTime,
+    this.streamCount = 0,
     this.error,
   });
 
@@ -592,6 +596,7 @@ class IndexerStatusDetail {
   final String name;
   final bool isOnline;
   final int responseTime;
+  final int streamCount;
   final String? error;
 }
 

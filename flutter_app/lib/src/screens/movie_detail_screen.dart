@@ -28,6 +28,8 @@ class MovieDetailScreen extends StatefulWidget {
 }
 
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
+  static const int _initialRetryCount = 3;
+
   MediaDetail? _detail;
   bool _loading = true;
   bool _showFullDescription = false;
@@ -40,10 +42,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     _loadFavoriteState();
   }
 
-  Future<void> _loadDetail() async {
-    setState(() {
-      _loading = true;
-    });
+  Future<void> _loadDetail({int retryCount = _initialRetryCount}) async {
+    if (!_loading) {
+      setState(() {
+        _loading = true;
+      });
+    }
 
     try {
       final MediaDetail detail =
@@ -57,6 +61,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         _loading = false;
       });
     } catch (_) {
+      if (retryCount > 0) {
+        // Exponential backoff: 400ms, 800ms, 1200ms
+        final int delayMs = 400 * (_initialRetryCount - retryCount + 1);
+        await Future<void>.delayed(Duration(milliseconds: delayMs));
+        if (!mounted) {
+          return;
+        }
+        await _loadDetail(retryCount: retryCount - 1);
+        return;
+      }
+
       if (!mounted) {
         return;
       }

@@ -260,22 +260,25 @@ class StremioAddonsService {
 
   Future<Map<String, dynamic>> _fetchJson(Uri uri) async {
     final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 30);
+      ..connectionTimeout = const Duration(seconds: 30)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
     try {
       final HttpClientRequest request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       request.headers.set(
         HttpHeaders.userAgentHeader,
-        'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       );
-      final HttpClientResponse response = await request.close();
-      final String raw = await response.transform(utf8.decoder).join();
+      
+      final HttpClientResponse response = await request.close().timeout(const Duration(seconds: 20));
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
           'Addon request failed with status ${response.statusCode}',
           uri: uri,
         );
       }
+      
+      final String raw = await response.transform(utf8.decoder).join();
       return jsonDecode(raw) as Map<String, dynamic>;
     } on FormatException {
       throw const FormatException('Addon server returned invalid JSON.');

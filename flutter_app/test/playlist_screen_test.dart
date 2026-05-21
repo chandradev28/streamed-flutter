@@ -122,6 +122,43 @@ void main() {
     expect(find.text('HULU PICK'), findsOneWidget);
     expect(find.text('JUN 2'), findsOneWidget);
   });
+
+  testWidgets('keeps cached provider titles when a refresh fails', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlaylistScreen(
+            playlistService: _FlakyPlaylistService(
+              <int, List<PlaylistMovie>>{
+                8: <PlaylistMovie>[
+                  const PlaylistMovie(
+                    id: 1,
+                    title: 'Netflix Hit',
+                    posterPath: null,
+                    releaseDate: '2024-04-16',
+                  ),
+                ],
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('NETFLIX HIT'), findsOneWidget);
+
+    await tester.tap(find.text('Netflix'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('NETFLIX HIT'), findsOneWidget);
+    expect(find.text('No playlist titles found'), findsNothing);
+  });
 }
 
 class _FakePlaylistService implements PlaylistService {
@@ -131,6 +168,24 @@ class _FakePlaylistService implements PlaylistService {
 
   @override
   Future<List<PlaylistMovie>> getMoviesByProvider(int providerId) async {
+    return responses[providerId] ?? const <PlaylistMovie>[];
+  }
+}
+
+class _FlakyPlaylistService implements PlaylistService {
+  _FlakyPlaylistService(this.responses);
+
+  final Map<int, List<PlaylistMovie>> responses;
+  final Map<int, int> _calls = <int, int>{};
+
+  @override
+  Future<List<PlaylistMovie>> getMoviesByProvider(int providerId) async {
+    final int callCount = (_calls[providerId] ?? 0) + 1;
+    _calls[providerId] = callCount;
+    if (callCount > 1) {
+      throw Exception('network blink');
+    }
+
     return responses[providerId] ?? const <PlaylistMovie>[];
   }
 }

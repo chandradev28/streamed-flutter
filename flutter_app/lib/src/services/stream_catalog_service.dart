@@ -9,13 +9,29 @@ class StreamCatalogService {
   static const String _torrentioBaseUrl = 'https://torrentio.strem.fun';
 
   static const List<_IndexerDefinition> _indexers = <_IndexerDefinition>[
-    _IndexerDefinition(id: '1337x', name: '1337x'),
     _IndexerDefinition(id: 'yts', name: 'YTS'),
-    _IndexerDefinition(id: 'tpb', name: 'The Pirate Bay'),
-    _IndexerDefinition(id: 'rarbg', name: 'RARBG'),
     _IndexerDefinition(id: 'eztv', name: 'EZTV'),
-    _IndexerDefinition(id: 'nyaa', name: 'Nyaa'),
-    _IndexerDefinition(id: 'kickass', name: 'KickassTorrents'),
+    _IndexerDefinition(id: 'rarbg', name: 'RARBG'),
+    _IndexerDefinition(id: '1337x', name: '1337x'),
+    _IndexerDefinition(id: 'thepiratebay', name: 'The Pirate Bay'),
+    _IndexerDefinition(id: 'kickasstorrents', name: 'KickassTorrents'),
+    _IndexerDefinition(id: 'torrentgalaxy', name: 'TorrentGalaxy'),
+    _IndexerDefinition(id: 'magnetdl', name: 'MagnetDL'),
+    _IndexerDefinition(id: 'horriblesubs', name: 'HorribleSubs'),
+    _IndexerDefinition(id: 'nyaasi', name: 'NyaaSi'),
+    _IndexerDefinition(id: 'tokyotosho', name: 'TokyoTosho'),
+    _IndexerDefinition(id: 'anidex', name: 'AniDex'),
+    _IndexerDefinition(id: 'rutor', name: 'Rutor'),
+    _IndexerDefinition(id: 'rutracker', name: 'Rutracker'),
+    _IndexerDefinition(id: 'comando', name: 'Comando'),
+    _IndexerDefinition(id: 'bludv', name: 'BluDV'),
+    _IndexerDefinition(id: 'micoleaodublado', name: 'MicoLeaoDublado'),
+    _IndexerDefinition(id: 'torrent9', name: 'Torrent9'),
+    _IndexerDefinition(id: 'ilcorsaronero', name: 'ilCorSaRoNeRo'),
+    _IndexerDefinition(id: 'mejortorrent', name: 'MejorTorrent'),
+    _IndexerDefinition(id: 'wolfmax4k', name: 'Wolfmax4k'),
+    _IndexerDefinition(id: 'cinecalidad', name: 'Cinecalidad'),
+    _IndexerDefinition(id: 'besttorrents', name: 'BestTorrents'),
   ];
 
   Future<IndexerHealth> checkTorrentioHealth() async {
@@ -42,7 +58,7 @@ class StreamCatalogService {
 
   Future<List<IndexerStatusDetail>> checkIndexerStatuses() async {
     final List<Future<IndexerStatusDetail>> tasks = _indexers
-        .map(( _IndexerDefinition indexer) => _probeIndexer(indexer))
+        .map((_IndexerDefinition indexer) => _probeIndexer(indexer))
         .toList(growable: false);
     return Future.wait(tasks);
   }
@@ -70,7 +86,7 @@ class StreamCatalogService {
   Future<IndexerStatusDetail> _probeIndexer(_IndexerDefinition indexer) async {
     final DateTime startedAt = DateTime.now();
     final Uri uri = Uri.parse(
-      '$_torrentioBaseUrl/${indexer.id}/stream/movie/tt0133093.json',
+      '$_torrentioBaseUrl/providers=${indexer.id}/stream/movie/tt0133093.json',
     );
     try {
       final Map<String, dynamic> payload = await _fetchJson(uri);
@@ -79,8 +95,9 @@ class StreamCatalogService {
       return IndexerStatusDetail(
         id: indexer.id,
         name: indexer.name,
-        isOnline: streams.isNotEmpty,
+        isOnline: true,
         responseTime: DateTime.now().difference(startedAt).inMilliseconds,
+        streamCount: streams.length,
       );
     } catch (error) {
       return IndexerStatusDetail(
@@ -130,8 +147,7 @@ class StreamCatalogService {
       isCached: cached,
       infoHash: infoHash,
       directUrl: directUrl,
-      fileIndex:
-          ((json['fileIdx'] ?? json['fileIndex']) as num?)?.toInt(),
+      fileIndex: ((json['fileIdx'] ?? json['fileIndex']) as num?)?.toInt(),
       fileName: _readString(behaviorHints['filename']),
       videoSizeBytes: (behaviorHints['videoSize'] as num?)?.toInt(),
     );
@@ -139,22 +155,25 @@ class StreamCatalogService {
 
   Future<Map<String, dynamic>> _fetchJson(Uri uri) async {
     final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 20);
+      ..connectionTimeout = const Duration(seconds: 25)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
     try {
       final HttpClientRequest request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       request.headers.set(
         HttpHeaders.userAgentHeader,
-        'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       );
-      final HttpClientResponse response = await request.close();
-      final String raw = await response.transform(utf8.decoder).join();
+      
+      final HttpClientResponse response = await request.close().timeout(const Duration(seconds: 20));
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
           'Request failed with status ${response.statusCode}',
           uri: uri,
         );
       }
+      
+      final String raw = await response.transform(utf8.decoder).join();
       return jsonDecode(raw) as Map<String, dynamic>;
     } finally {
       client.close(force: true);
@@ -225,7 +244,8 @@ class StreamCatalogService {
     ).hasMatch(haystack);
   }
 
-  String? _extractInfoHashFromBehaviorHints(Map<String, dynamic> behaviorHints) {
+  String? _extractInfoHashFromBehaviorHints(
+      Map<String, dynamic> behaviorHints) {
     final String? bingeGroup = _readString(behaviorHints['bingeGroup']);
     return _extractInfoHash(bingeGroup);
   }

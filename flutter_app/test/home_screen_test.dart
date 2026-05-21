@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flutter_app/src/models/tmdb_media_models.dart';
 import 'package:flutter_app/src/models/watch_history_item.dart';
 import 'package:flutter_app/src/screens/home_screen.dart';
 
@@ -39,8 +40,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.byKey(const ValueKey<String>('home-menu-button')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('home-profile-button')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey<String>('home-menu-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('home-profile-button')),
+        findsOneWidget);
     expect(find.text('Streamed'), findsOneWidget);
     expect(find.text('Top trending movies'), findsOneWidget);
 
@@ -64,4 +67,33 @@ void main() {
     expect(find.text('Trending One'), findsOneWidget);
     expect(find.text('Space Show'), findsOneWidget);
   });
+
+  testWidgets('keeps rendering available home rows when one fetch fails', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          mediaService: const _NowPlayingFailureMediaService(),
+          watchHistoryRepository: const FakeWatchHistoryRepository(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Top trending movies'), findsOneWidget);
+    expect(find.text('Trending One'), findsOneWidget);
+    expect(find.text('New Releases'), findsOneWidget);
+  });
+}
+
+class _NowPlayingFailureMediaService extends FakeMediaService {
+  const _NowPlayingFailureMediaService();
+
+  @override
+  Future<List<MediaSummary>> getNowPlayingMovies() async {
+    throw Exception('network blink');
+  }
 }

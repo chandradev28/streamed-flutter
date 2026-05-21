@@ -8,7 +8,8 @@ class IndexerStatusScreen extends StatefulWidget {
   const IndexerStatusScreen({
     super.key,
     StreamCatalogService? streamCatalogService,
-  }) : streamCatalogService = streamCatalogService ?? const StreamCatalogService();
+  }) : streamCatalogService =
+            streamCatalogService ?? const StreamCatalogService();
 
   final StreamCatalogService streamCatalogService;
 
@@ -98,7 +99,7 @@ class _IndexerStatusScreenState extends State<IndexerStatusScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'These are the public engine routes the old Torboxers flow depended on under Torrentio.',
+              'These use Torrentio\'s current providers=... configuration route instead of the old direct engine URLs.',
               style: TextStyle(color: AppColors.textMuted, height: 1.45),
             ),
             const SizedBox(height: 12),
@@ -307,7 +308,7 @@ class _IndexerProbeCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   detail.isOnline
-                      ? 'Online in ${detail.responseTime} ms'
+                      ? 'Online in ${detail.responseTime} ms - ${detail.streamCount} streams for probe title'
                       : detail.error ?? 'Offline',
                   style: const TextStyle(
                     color: AppColors.textMuted,

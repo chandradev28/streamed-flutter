@@ -15,17 +15,26 @@ class TmdbMediaService implements MediaCatalogService {
 
   static const String _apiKey = 'cd45143a9ade518a4381e765c719e68b';
   static const String _baseHost = 'api.themoviedb.org';
+  static const int _maxAttempts = 3;
 
   @override
   Future<List<MediaSummary>> getTrendingMovies() async {
-    final Map<String, dynamic> payload =
-        await _fetch('/3/trending/movie/week');
+    final Map<String, dynamic> payload = await _fetch(
+      '/3/trending/movie/week',
+      const <String, String>{'language': 'en-US'},
+    );
     return _readMediaSummaryList(payload).take(10).toList(growable: false);
   }
 
   @override
   Future<List<MediaSummary>> getNowPlayingMovies() async {
-    final Map<String, dynamic> payload = await _fetch('/3/movie/now_playing');
+    final Map<String, dynamic> payload = await _fetch(
+      '/3/movie/now_playing',
+      const <String, String>{
+        'language': 'en-US',
+        'region': 'US',
+      },
+    );
     return _readMediaSummaryList(payload).take(10).toList(growable: false);
   }
 
@@ -59,13 +68,15 @@ class TmdbMediaService implements MediaCatalogService {
   }
 
   @override
-  Future<List<EpisodeItem>> getSeasonEpisodes(int tvId, int seasonNumber) async {
+  Future<List<EpisodeItem>> getSeasonEpisodes(
+      int tvId, int seasonNumber) async {
     final Map<String, dynamic> payload =
         await _fetch('/3/tv/$tvId/season/$seasonNumber');
     final List<dynamic> results =
         payload['episodes'] as List<dynamic>? ?? const <dynamic>[];
     return results
-        .map((dynamic item) => EpisodeItem.fromJson(item as Map<String, dynamic>))
+        .map((dynamic item) =>
+            EpisodeItem.fromJson(item as Map<String, dynamic>))
         .toList(growable: false);
   }
 
@@ -82,14 +93,36 @@ class TmdbMediaService implements MediaCatalogService {
       },
     );
 
+    Object? lastError;
+    for (int attempt = 1; attempt <= _maxAttempts; attempt += 1) {
+      try {
+        return await _fetchOnce(uri);
+      } catch (error) {
+        lastError = error;
+        if (attempt == _maxAttempts) {
+          break;
+        }
+        await Future<void>.delayed(Duration(milliseconds: 250 * attempt));
+      }
+    }
+
+    throw lastError ?? HttpException('TMDB request failed.', uri: uri);
+  }
+
+  Future<Map<String, dynamic>> _fetchOnce(Uri uri) async {
     final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 15);
+      ..connectionTimeout = const Duration(seconds: 15)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
 
     try {
       final HttpClientRequest request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      );
 
-      final HttpClientResponse response = await request.close();
+      final HttpClientResponse response = await request.close().timeout(const Duration(seconds: 12));
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
           'TMDB request failed with status ${response.statusCode}',
@@ -108,7 +141,8 @@ class TmdbMediaService implements MediaCatalogService {
     final List<dynamic> results =
         payload['results'] as List<dynamic>? ?? const <dynamic>[];
     return results
-        .map((dynamic item) => MediaSummary.fromJson(item as Map<String, dynamic>))
+        .map((dynamic item) =>
+            MediaSummary.fromJson(item as Map<String, dynamic>))
         .toList(growable: false);
   }
 
@@ -121,7 +155,8 @@ class TmdbMediaService implements MediaCatalogService {
   }
 
   List<CastItem> _readCast(Map<String, dynamic> payload) {
-    final List<dynamic> cast = payload['cast'] as List<dynamic>? ?? const <dynamic>[];
+    final List<dynamic> cast =
+        payload['cast'] as List<dynamic>? ?? const <dynamic>[];
     return cast
         .take(10)
         .map((dynamic item) => CastItem.fromJson(item as Map<String, dynamic>))

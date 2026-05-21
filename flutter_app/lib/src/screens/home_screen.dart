@@ -45,43 +45,54 @@ class _HomeScreenState extends State<HomeScreen> {
       _loading = true;
     });
 
+    final List<dynamic> results = await Future.wait<dynamic>(<Future<dynamic>>[
+      _loadOrKeep<MediaSummary>(
+        _trending,
+        widget.mediaService.getTrendingMovies,
+      ),
+      _loadOrKeep<MediaSummary>(
+        _newReleases,
+        widget.mediaService.getNowPlayingMovies,
+      ),
+      _loadOrKeep<WatchHistoryItem>(
+        _continueWatching,
+        () => widget.watchHistoryRepository.getContinueWatching(20),
+      ),
+    ]);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _trending = results[0] as List<MediaSummary>;
+      _newReleases = results[1] as List<MediaSummary>;
+      _continueWatching = results[2] as List<WatchHistoryItem>;
+      _loading = false;
+    });
+  }
+
+  Future<List<T>> _loadOrKeep<T>(
+    List<T> current,
+    Future<List<T>> Function() loader,
+  ) async {
     try {
-      final List<dynamic> results = await Future.wait<dynamic>(<Future<dynamic>>[
-        widget.mediaService.getTrendingMovies(),
-        widget.mediaService.getNowPlayingMovies(),
-        widget.watchHistoryRepository.getContinueWatching(20),
-      ]);
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _trending = results[0] as List<MediaSummary>;
-        _newReleases = results[1] as List<MediaSummary>;
-        _continueWatching = results[2] as List<WatchHistoryItem>;
-        _loading = false;
-      });
+      final List<T> items = await loader();
+      return items.isEmpty && current.isNotEmpty ? current : items;
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _loading = false;
-      });
+      return current;
     }
   }
 
   void _openMedia(MediaSummary item) {
     Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (BuildContext context) => MovieDetailScreen(
-            id: item.id,
-            mediaType: item.mediaType,
-            mediaService: widget.mediaService,
-          ),
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => MovieDetailScreen(
+          id: item.id,
+          mediaType: item.mediaType,
+          mediaService: widget.mediaService,
         ),
+      ),
     );
   }
 
@@ -102,13 +113,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (BuildContext context) => MovieDetailScreen(
-            id: item.tmdbId,
-            mediaType: item.mediaType,
-            mediaService: widget.mediaService,
-          ),
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => MovieDetailScreen(
+          id: item.tmdbId,
+          mediaType: item.mediaType,
+          mediaService: widget.mediaService,
         ),
+      ),
     );
   }
 
@@ -288,7 +299,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             Row(
                               children: <Widget>[
                                 _SquareHeaderButton(
-                                  key: const ValueKey<String>('home-menu-button'),
+                                  key: const ValueKey<String>(
+                                      'home-menu-button'),
                                   icon: Icons.menu_rounded,
                                   onTap: _showMainMenu,
                                 ),
@@ -343,7 +355,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           padding: const EdgeInsets.fromLTRB(24, 0, 8, 0),
                           scrollDirection: Axis.horizontal,
                           itemCount: _trending.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 16),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: 16),
                           itemBuilder: (BuildContext context, int index) {
                             final MediaSummary item = _trending[index];
                             return _PosterWithLabel(
@@ -433,7 +446,7 @@ class _SquareHeaderButton extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
-        child: Container(
+      child: Container(
         width: 38,
         height: 38,
         decoration: BoxDecoration(
@@ -567,7 +580,8 @@ class _PosterWithLabel extends StatelessWidget {
                         Object error,
                         StackTrace? stackTrace,
                       ) {
-                        return const ColoredBox(color: AppColors.cardBackground);
+                        return const ColoredBox(
+                            color: AppColors.cardBackground);
                       },
                     ),
             ),
@@ -621,14 +635,16 @@ class _FeaturedContinueCard extends StatelessWidget {
                 (item.backdropPath ?? item.posterPath) == null
                     ? const ColoredBox(color: AppColors.cardBackground)
                     : Image.network(
-                        getImageUrl(item.backdropPath ?? item.posterPath, 'w780'),
+                        getImageUrl(
+                            item.backdropPath ?? item.posterPath, 'w780'),
                         fit: BoxFit.cover,
                         errorBuilder: (
                           BuildContext context,
                           Object error,
                           StackTrace? stackTrace,
                         ) {
-                          return const ColoredBox(color: AppColors.cardBackground);
+                          return const ColoredBox(
+                              color: AppColors.cardBackground);
                         },
                       ),
                 DecoratedBox(
@@ -742,7 +758,8 @@ class _MiniContinueCard extends StatelessWidget {
                           Object error,
                           StackTrace? stackTrace,
                         ) {
-                          return const ColoredBox(color: AppColors.cardBackground);
+                          return const ColoredBox(
+                              color: AppColors.cardBackground);
                         },
                       ),
                 Align(

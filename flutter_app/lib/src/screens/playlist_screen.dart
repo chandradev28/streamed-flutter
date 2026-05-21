@@ -26,48 +26,50 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       name: 'Netflix',
       providerId: 8,
       color: Color(0xFFE50914),
-      monogram: 'N',
+      assetPath: 'assets/ott/netflix.png',
     ),
     _ProviderOption(
       id: '9',
       name: 'Prime',
       providerId: 9,
       color: Color(0xFF00A8E1),
-      monogram: 'P',
+      assetPath: 'assets/ott/prime.png',
     ),
     _ProviderOption(
       id: '1899',
       name: 'HBO',
       providerId: 1899,
       color: Color(0xFF991EEB),
-      monogram: 'H',
+      assetPath: 'assets/ott/hbo.png',
     ),
     _ProviderOption(
       id: '337',
       name: 'Disney+',
       providerId: 337,
       color: Color(0xFF113CCF),
-      monogram: 'D',
+      assetPath: 'assets/ott/disney.png',
     ),
     _ProviderOption(
       id: '350',
       name: 'Apple TV+',
       providerId: 350,
       color: Color(0xFF555555),
-      monogram: 'A',
+      assetPath: 'assets/ott/apple.png',
     ),
     _ProviderOption(
       id: '15',
       name: 'Hulu',
       providerId: 15,
       color: Color(0xFF1CE783),
-      monogram: 'H',
+      assetPath: 'assets/ott/hulu.png',
     ),
   ];
 
   late final PageController _pageController;
   _ProviderOption _activeProvider = _providers.first;
   List<PlaylistMovie> _movies = const <PlaylistMovie>[];
+  final Map<int, List<PlaylistMovie>> _providerCache =
+      <int, List<PlaylistMovie>>{};
   bool _loading = true;
   int _currentIndex = 0;
   int _requestVersion = 0;
@@ -92,6 +94,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       _activeProvider = provider;
       _loading = true;
       _currentIndex = 0;
+      _movies = _providerCache[provider.providerId] ?? _movies;
     });
 
     try {
@@ -104,14 +107,18 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
       setState(() {
         _movies = movies;
+        if (movies.isNotEmpty) {
+          _providerCache[provider.providerId] = movies;
+        }
       });
     } catch (_) {
       if (!mounted || requestVersion != _requestVersion) {
         return;
       }
 
+      final List<PlaylistMovie>? cached = _providerCache[provider.providerId];
       setState(() {
-        _movies = const <PlaylistMovie>[];
+        _movies = cached ?? const <PlaylistMovie>[];
       });
     } finally {
       if (mounted && requestVersion == _requestVersion) {
@@ -188,7 +195,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                                     provider: provider,
                                     selected:
                                         provider.name == _activeProvider.name,
-                                    onTap: () => _loadMoviesForProvider(provider),
+                                    onTap: () =>
+                                        _loadMoviesForProvider(provider),
                                   ),
                                 ),
                               )
@@ -200,7 +208,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                 ),
                 Expanded(
                   child: LayoutBuilder(
-                    builder: (BuildContext context, BoxConstraints constraints) {
+                    builder:
+                        (BuildContext context, BoxConstraints constraints) {
                       if (_loading) {
                         return const Center(
                           child: CircularProgressIndicator(
@@ -222,9 +231,9 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                           gapBelowCard +
                           (showDots ? dotsBlockHeight : 0) +
                           bottomSpacing;
-                      final double pageHeight = (constraints.maxHeight -
-                              reservedHeight)
-                          .clamp(220.0, 430.0);
+                      final double pageHeight =
+                          (constraints.maxHeight - reservedHeight)
+                              .clamp(220.0, 430.0);
 
                       return Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -296,14 +305,14 @@ class _ProviderOption {
     required this.name,
     required this.providerId,
     required this.color,
-    required this.monogram,
+    required this.assetPath,
   });
 
   final String id;
   final String name;
   final int providerId;
   final Color color;
-  final String monogram;
+  final String assetPath;
 }
 
 class _ProviderChip extends StatelessWidget {
@@ -320,9 +329,7 @@ class _ProviderChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected
-          ? const Color(0xF23C3C3C)
-          : const Color(0xD9282828),
+      color: selected ? const Color(0xF23C3C3C) : const Color(0xD9282828),
       borderRadius: BorderRadius.circular(23),
       child: InkWell(
         onTap: onTap,
@@ -344,17 +351,27 @@ class _ProviderChip extends StatelessWidget {
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: provider.color,
                   borderRadius: BorderRadius.circular(8),
+                  color: Colors.white.withOpacity(0.05),
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  provider.monogram,
-                  style: const TextStyle(
-                    color: AppColors.text,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
+                clipBehavior: Clip.antiAlias,
+                child: Image.asset(
+                  provider.assetPath,
+                  fit: BoxFit.contain,
+                  errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                    return Container(
+                      color: provider.color,
+                      alignment: Alignment.center,
+                      child: Text(
+                        provider.name[0],
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(width: 8),
