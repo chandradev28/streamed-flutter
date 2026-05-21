@@ -4,7 +4,7 @@ import '../models/tmdb_media_models.dart';
 import '../services/tmdb_image.dart';
 import '../services/tmdb_media_service.dart';
 import '../theme/app_colors.dart';
-import 'torboxers_screen.dart';
+import 'streamed_sources_screen.dart';
 
 class EpisodeScreen extends StatefulWidget {
   const EpisodeScreen({
@@ -115,11 +115,11 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
 
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (BuildContext context) => TorboxersScreen(
-          seedTitle: widget.showName,
+        builder: (BuildContext context) => StreamedSourcesScreen(
+          title: widget.showName,
           posterPath: widget.posterPath ?? show.posterPath,
           mediaType: 'tv',
-          imdbId: show.imdbId,
+          imdbId: show.imdbId!,
           tmdbId: show.id,
           seasonNumber: episode.seasonNumber,
           episodeNumber: episode.episodeNumber,

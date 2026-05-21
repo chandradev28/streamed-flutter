@@ -7,7 +7,7 @@ import '../services/tmdb_media_service.dart';
 import '../theme/app_colors.dart';
 import 'episode_screen.dart';
 import 'magnet_screen.dart';
-import 'torboxers_screen.dart';
+import 'streamed_sources_screen.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   MovieDetailScreen({
@@ -141,11 +141,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (BuildContext context) => TorboxersScreen(
-          seedTitle: detail.title,
+        builder: (BuildContext context) => StreamedSourcesScreen(
+          title: detail.title,
           posterPath: detail.posterPath,
           mediaType: detail.mediaType,
-          imdbId: detail.imdbId,
+          imdbId: detail.imdbId!,
           tmdbId: detail.id,
         ),
       ),
