@@ -55,8 +55,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final AppSettings settings = await widget.settingsRepository.loadSettings();
     _apiKeyController.text = settings.torBoxApiKey ?? '';
-    final bool hasKey =
-        settings.torBoxApiKey != null && settings.torBoxApiKey!.trim().isNotEmpty;
+    final bool hasKey = settings.torBoxApiKey != null &&
+        settings.torBoxApiKey!.trim().isNotEmpty;
 
     if (!hasKey) {
       if (!mounted) {
@@ -132,7 +132,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) {
         return;
       }
-      final AppSettings settings = await widget.settingsRepository.loadSettings();
+      final AppSettings settings =
+          await widget.settingsRepository.loadSettings();
       if (!mounted) {
         return;
       }
@@ -275,11 +276,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 8),
                     const Text(
                       'Connect the TorBox account used by search, library, magnet import, and the player tools.',
-                      style: TextStyle(color: AppColors.textMuted, height: 1.45),
+                      style:
+                          TextStyle(color: AppColors.textMuted, height: 1.45),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _apiKeyController,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      textCapitalization: TextCapitalization.none,
                       style: const TextStyle(color: AppColors.text),
                       decoration: InputDecoration(
                         hintText: 'TorBox API key',
@@ -306,7 +311,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Text(_saving ? 'Saving...' : 'Save key'),
                         ),
                         FilledButton.tonal(
-                          onPressed: _settings.torBoxApiKey == null ? null : _removeApiKey,
+                          onPressed: _settings.torBoxApiKey == null
+                              ? null
+                              : _removeApiKey,
                           child: const Text('Remove'),
                         ),
                         FilledButton.tonal(
@@ -492,14 +499,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             runSpacing: 8,
                             children: <Widget>[
                               _LibraryChip(label: _formatBytes(torrent.size)),
-                              _LibraryChip(label: '${torrent.progress.round()}%'),
+                              _LibraryChip(
+                                  label: '${torrent.progress.round()}%'),
                               _LibraryChip(
                                 label: torrent.downloadState.isEmpty
                                     ? 'Queued'
                                     : torrent.downloadState,
                               ),
                               if (torrent.files.length > 1)
-                                _LibraryChip(label: '${torrent.files.length} files'),
+                                _LibraryChip(
+                                    label: '${torrent.files.length} files'),
                             ],
                           ),
                           if (torrent.files.length > 1) ...<Widget>[
@@ -523,14 +532,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   contentPadding: EdgeInsets.zero,
                                   title: Text(
                                     file.displayName,
-                                    style: const TextStyle(color: AppColors.text),
+                                    style:
+                                        const TextStyle(color: AppColors.text),
                                   ),
                                   subtitle: Text(
                                     _formatBytes(file.size),
-                                    style: const TextStyle(color: AppColors.textMuted),
+                                    style: const TextStyle(
+                                        color: AppColors.textMuted),
                                   ),
                                   trailing: IconButton(
-                                    onPressed: () => _openPlayer(torrent, file: file),
+                                    onPressed: () =>
+                                        _openPlayer(torrent, file: file),
                                     icon: const Icon(Icons.play_circle_outline),
                                   ),
                                 ),
@@ -576,12 +588,10 @@ class _TorBoxStatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color foreground = error
-        ? const Color(0xFFFCA5A5)
-        : const Color(0xFFBBF7D0);
-    final Color background = error
-        ? const Color(0x33EF4444)
-        : const Color(0x3310B981);
+    final Color foreground =
+        error ? const Color(0xFFFCA5A5) : const Color(0xFFBBF7D0);
+    final Color background =
+        error ? const Color(0x33EF4444) : const Color(0x3310B981);
 
     return Container(
       width: double.infinity,
@@ -736,7 +746,8 @@ class _EmptyLibraryState extends StatelessWidget {
       ),
       child: Column(
         children: <Widget>[
-          const Icon(Icons.cloud_queue_outlined, color: AppColors.textMuted, size: 36),
+          const Icon(Icons.cloud_queue_outlined,
+              color: AppColors.textMuted, size: 36),
           const SizedBox(height: 12),
           Text(
             title,

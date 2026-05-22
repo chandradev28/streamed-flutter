@@ -106,31 +106,41 @@ class TorBoxUser {
   bool get hasSlotInfo => totalSlots > 0 || usedSlots > 0;
 
   factory TorBoxUser.fromJson(Map<String, dynamic> json) {
-    final int planCode = (json['plan'] as num?)?.toInt() ?? -1;
-    final int extraSlots =
-        (json['additional_concurrent_slots'] as num?)?.toInt() ?? 0;
-    final int totalSlots = (json['total_slots'] as num?)?.toInt() ??
-        (json['slots'] as num?)?.toInt() ??
+    final int planCode = _readInt(json['plan']) ?? -1;
+    final int extraSlots = _readInt(json['additional_concurrent_slots']) ?? 0;
+    final int totalSlots = _readInt(json['total_slots']) ??
+        _readInt(json['slots']) ??
         _planSlots(planCode, extraSlots);
-    final int usedSlots = (json['used_slots'] as num?)?.toInt() ??
-        (json['active_downloads'] as num?)?.toInt() ??
-        0;
+    final int usedSlots =
+        _readInt(json['used_slots']) ?? _readInt(json['active_downloads']) ?? 0;
 
     return TorBoxUser(
-      email: (json['email'] as String?) ??
-          (json['username'] as String?) ??
+      email: _readString(json['email']) ??
+          _readString(json['username']) ??
           'TorBox account',
-      plan: (json['plan_name'] as String?) ??
+      plan: _readString(json['plan_name']) ??
           _planLabel(planCode) ??
-          (json['plan'] as String?) ??
-          (json['subscription'] as String?) ??
+          _readString(json['plan']) ??
+          _readString(json['subscription']) ??
           'Unknown plan',
-      createdAt: json['created_at'] as String?,
+      createdAt: _readString(json['created_at']),
       totalSlots: totalSlots,
       usedSlots: usedSlots,
-      premiumExpiresAt: json['premium_expires_at'] as String? ??
-          json['premium_expiration'] as String?,
+      premiumExpiresAt: _readString(json['premium_expires_at']) ??
+          _readString(json['premium_expiration']),
     );
+  }
+
+  static int? _readInt(dynamic value) {
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static String? _readString(dynamic value) {
+    final String text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
   }
 
   static String? _planLabel(int code) {

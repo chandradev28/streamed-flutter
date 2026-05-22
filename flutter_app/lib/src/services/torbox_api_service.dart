@@ -11,12 +11,22 @@ class TorBoxApiService {
   }) : _settingsRepository = settingsRepository ?? AppSettingsRepository();
 
   static const String _baseUrl = 'https://api.torbox.app/v1/api';
+  static const int _maxAttempts = 2;
 
   final AppSettingsRepository _settingsRepository;
 
+  static String normalizeApiKey(String value) {
+    String key = value.trim();
+    key = key.replaceAll(RegExp(r'^Bearer\s+', caseSensitive: false), '');
+    key = key.replaceAll(RegExp(r'^Token\s+', caseSensitive: false), '');
+    key = key.replaceAll(RegExp("[\"'`]+"), '');
+    key = key.replaceAll(RegExp(r'\s+'), '');
+    return key;
+  }
+
   Future<bool> isConfigured() async {
     final String? apiKey = await _settingsRepository.getTorBoxApiKey();
-    return apiKey != null && apiKey.trim().isNotEmpty;
+    return normalizeApiKey(apiKey ?? '').isNotEmpty;
   }
 
   Future<bool> verifyApiKey({String? apiKeyOverride}) async {
@@ -44,7 +54,14 @@ class TorBoxApiService {
     );
     final dynamic data = payload['data'];
     if (payload['success'] == true && data is Map<String, dynamic>) {
-      return TorBoxUser.fromJson(data);
+      try {
+        return TorBoxUser.fromJson(data);
+      } catch (error) {
+        throw TorBoxApiException(
+          detail: 'TorBox returned user data in an unexpected format.',
+          errorCode: error.runtimeType.toString(),
+        );
+      }
     }
 
     throw TorBoxApiException(
@@ -60,6 +77,7 @@ class TorBoxApiService {
   }) async {
     final Map<String, String> query = <String, String>{
       'bypass_cache': 'true',
+      'format': 'list',
     };
     if (torrentId != null) {
       query['id'] = torrentId.toString();
@@ -74,22 +92,28 @@ class TorBoxApiService {
       return const <TorBoxTorrent>[];
     }
 
-    final dynamic data = payload['data'];
-    final List<dynamic> rows = data is List<dynamic>
-        ? data
-        : data == null
-            ? const <dynamic>[]
-            : <dynamic>[data];
-    return rows
-        .map(
-          (dynamic item) =>
-              TorBoxTorrent.fromJson(item as Map<String, dynamic>),
-        )
+    return _readTorrentRows(payload['data'])
+        .map(TorBoxTorrent.fromJson)
         .toList(growable: false);
   }
 
+  List<Map<String, dynamic>> _readTorrentRows(dynamic data) {
+    if (data is List<dynamic>) {
+      return data.whereType<Map<String, dynamic>>().toList(growable: false);
+    }
+    if (data is Map<String, dynamic>) {
+      if (data.containsKey('id') || data.containsKey('hash')) {
+        return <Map<String, dynamic>>[data];
+      }
+      return data.values
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
   Future<TorBoxAccountSnapshot> connectAndLoad(String apiKey) async {
-    final String trimmed = apiKey.trim();
+    final String trimmed = normalizeApiKey(apiKey);
     if (trimmed.isEmpty) {
       throw const TorBoxApiException(detail: 'Enter a TorBox API key first.');
     }
@@ -209,8 +233,8 @@ class TorBoxApiService {
   Future<String?> getQuickStreamUrl(int torrentId, [int? fileId]) async {
     try {
       final String? apiKey = await _settingsRepository.getTorBoxApiKey();
-      final String? trimmedApiKey = apiKey?.trim();
-      if (trimmedApiKey == null || trimmedApiKey.isEmpty) {
+      final String trimmedApiKey = normalizeApiKey(apiKey ?? '');
+      if (trimmedApiKey.isEmpty) {
         return null;
       }
 
@@ -223,9 +247,7 @@ class TorBoxApiService {
       );
 
       final HttpClient client = HttpClient()
-        ..connectionTimeout = const Duration(seconds: 30)
-        ..badCertificateCallback =
-            (X509Certificate cert, String host, int port) => true;
+        ..connectionTimeout = const Duration(seconds: 30);
       try {
         final HttpClientRequest request = await client.getUrl(uri);
         request.headers.set(HttpHeaders.acceptHeader, 'application/json');
@@ -233,9 +255,11 @@ class TorBoxApiService {
           HttpHeaders.userAgentHeader,
           'StreamedFlutter/1.0 (Android; Flutter)',
         );
-        final HttpClientResponse response = await request.close()
-            .timeout(const Duration(seconds: 30));
-        final String raw = await response.transform(utf8.decoder).join()
+        final HttpClientResponse response =
+            await request.close().timeout(const Duration(seconds: 30));
+        final String raw = await response
+            .transform(utf8.decoder)
+            .join()
             .timeout(const Duration(seconds: 15));
         if (response.statusCode != HttpStatus.ok) {
           return null;
@@ -266,15 +290,51 @@ class TorBoxApiService {
   }) async {
     final String? rawApiKey =
         apiKeyOverride ?? await _settingsRepository.getTorBoxApiKey();
-    final String? apiKey = rawApiKey?.trim();
-    if (apiKey == null || apiKey.isEmpty) {
+    final String apiKey = normalizeApiKey(rawApiKey ?? '');
+    if (apiKey.isEmpty) {
       throw const TorBoxApiException(detail: 'TorBox API key not configured.');
     }
 
+    Object? lastError;
+    for (int attempt = 1; attempt <= _maxAttempts; attempt += 1) {
+      try {
+        return await _requestJsonOnce(
+          method,
+          uri,
+          apiKey: apiKey,
+          body: body,
+        );
+      } catch (error) {
+        lastError = error;
+        if (error is TorBoxApiException &&
+            error.statusCode != null &&
+            error.statusCode! >= 400 &&
+            error.statusCode! < 500) {
+          rethrow;
+        }
+        if (attempt == _maxAttempts) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+      }
+    }
+
+    if (lastError is TorBoxApiException) {
+      throw lastError;
+    }
+    throw TorBoxApiException(
+      detail: 'Connection error: ${lastError.runtimeType} - $lastError',
+    );
+  }
+
+  Future<Map<String, dynamic>> _requestJsonOnce(
+    String method,
+    Uri uri, {
+    required String apiKey,
+    Map<String, dynamic>? body,
+  }) async {
     final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 30)
-      ..badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
+      ..connectionTimeout = const Duration(seconds: 30);
     try {
       final HttpClientRequest request = await client.openUrl(method, uri);
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
@@ -289,9 +349,11 @@ class TorBoxApiService {
         request.write(jsonEncode(body));
       }
 
-      final HttpClientResponse response = await request.close()
-          .timeout(const Duration(seconds: 30));
-      final String raw = await response.transform(utf8.decoder).join()
+      final HttpClientResponse response =
+          await request.close().timeout(const Duration(seconds: 30));
+      final String raw = await response
+          .transform(utf8.decoder)
+          .join()
           .timeout(const Duration(seconds: 15));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw TorBoxApiException.fromHttpResponse(
@@ -311,7 +373,8 @@ class TorBoxApiService {
       );
     } on HandshakeException catch (e) {
       throw TorBoxApiException(
-        detail: 'TLS handshake failed: ${e.message}. Try a different DNS provider.',
+        detail:
+            'TLS handshake failed: ${e.message}. Try a different DNS provider.',
       );
     } on TimeoutException {
       throw TorBoxApiException(
@@ -323,7 +386,7 @@ class TorBoxApiService {
       );
     } catch (e) {
       throw TorBoxApiException(
-        detail: 'Connection error: ${e.runtimeType} – $e',
+        detail: 'Connection error: ${e.runtimeType} - $e',
       );
     } finally {
       client.close(force: true);
@@ -335,8 +398,8 @@ class TorBoxApiService {
     Map<String, String> fields,
   ) async {
     final String? rawApiKey = await _settingsRepository.getTorBoxApiKey();
-    final String? apiKey = rawApiKey?.trim();
-    if (apiKey == null || apiKey.isEmpty) {
+    final String apiKey = normalizeApiKey(rawApiKey ?? '');
+    if (apiKey.isEmpty) {
       throw const TorBoxApiException(detail: 'TorBox API key not configured.');
     }
 
@@ -353,9 +416,7 @@ class TorBoxApiService {
     buffer.write('--$boundary--\r\n');
 
     final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 30)
-      ..badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
+      ..connectionTimeout = const Duration(seconds: 30);
     try {
       final HttpClientRequest request = await client.postUrl(uri);
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
@@ -369,9 +430,11 @@ class TorBoxApiService {
         'StreamedFlutter/1.0 (Android; Flutter)',
       );
       request.write(buffer.toString());
-      final HttpClientResponse response = await request.close()
-          .timeout(const Duration(seconds: 30));
-      final String raw = await response.transform(utf8.decoder).join()
+      final HttpClientResponse response =
+          await request.close().timeout(const Duration(seconds: 30));
+      final String raw = await response
+          .transform(utf8.decoder)
+          .join()
           .timeout(const Duration(seconds: 15));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw TorBoxApiException.fromHttpResponse(
@@ -390,7 +453,8 @@ class TorBoxApiService {
       );
     } on HandshakeException catch (e) {
       throw TorBoxApiException(
-        detail: 'TLS handshake failed: ${e.message}. Try a different DNS provider.',
+        detail:
+            'TLS handshake failed: ${e.message}. Try a different DNS provider.',
       );
     } on TimeoutException {
       throw TorBoxApiException(
@@ -398,7 +462,7 @@ class TorBoxApiService {
       );
     } catch (e) {
       throw TorBoxApiException(
-        detail: 'Connection error: ${e.runtimeType} – $e',
+        detail: 'Connection error: ${e.runtimeType} - $e',
       );
     } finally {
       client.close(force: true);
