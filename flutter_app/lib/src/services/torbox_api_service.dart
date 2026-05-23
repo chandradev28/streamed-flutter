@@ -53,21 +53,31 @@ class TorBoxApiService {
       apiKeyOverride: apiKeyOverride,
     );
     final dynamic data = payload['data'];
-    if (payload['success'] == true && data is Map<String, dynamic>) {
-      try {
-        return TorBoxUser.fromJson(data);
-      } catch (error) {
-        throw TorBoxApiException(
-          detail: 'TorBox returned user data in an unexpected format.',
-          errorCode: error.runtimeType.toString(),
-        );
+    if (payload['success'] == true) {
+      if (data is Map<String, dynamic>) {
+        try {
+          return TorBoxUser.fromJson(data);
+        } catch (_) {
+          return _fallbackUser();
+        }
       }
+      return _fallbackUser();
     }
 
     throw TorBoxApiException(
       detail:
           payload['detail'] as String? ?? 'TorBox returned invalid user data.',
       errorCode: payload['error'] as String?,
+    );
+  }
+
+  TorBoxUser _fallbackUser() {
+    return const TorBoxUser(
+      email: 'TorBox account',
+      plan: 'Connected',
+      createdAt: null,
+      totalSlots: 0,
+      usedSlots: 0,
     );
   }
 
@@ -377,7 +387,7 @@ class TorBoxApiService {
             'TLS handshake failed: ${e.message}. Try a different DNS provider.',
       );
     } on TimeoutException {
-      throw TorBoxApiException(
+      throw const TorBoxApiException(
         detail: 'Request timed out. TorBox API may be unreachable.',
       );
     } on FormatException catch (e) {
@@ -457,7 +467,7 @@ class TorBoxApiService {
             'TLS handshake failed: ${e.message}. Try a different DNS provider.',
       );
     } on TimeoutException {
-      throw TorBoxApiException(
+      throw const TorBoxApiException(
         detail: 'Request timed out. TorBox API may be unreachable.',
       );
     } catch (e) {

@@ -37,14 +37,19 @@ class StreamCatalogService {
   Future<IndexerHealth> checkTorrentioHealth() async {
     final DateTime startedAt = DateTime.now();
     try {
-      final List<StreamSource> results = await getBuiltInStreams(
+      final Map<String, dynamic> manifest =
+          await _fetchJson(Uri.parse('$_torrentioBaseUrl/manifest.json'));
+      final List<dynamic> streams = await _fetchBuiltInStreamRows(
         imdbId: 'tt0133093',
         mediaType: 'movie',
       );
+      final bool manifestOk =
+          _readString(manifest['id']) == 'com.stremio.torrentio.addon' ||
+              _readString(manifest['name'])?.toLowerCase() == 'torrentio';
       return IndexerHealth(
-        isOnline: results.isNotEmpty,
+        isOnline: manifestOk,
         responseTime: DateTime.now().difference(startedAt).inMilliseconds,
-        streamCount: results.length,
+        streamCount: streams.length,
       );
     } catch (error) {
       return IndexerHealth(
@@ -69,18 +74,31 @@ class StreamCatalogService {
     int? seasonNumber,
     int? episodeNumber,
   }) async {
-    final String path = mediaType == 'tv'
-        ? '/stream/series/$imdbId:${seasonNumber ?? 1}:${episodeNumber ?? 1}.json'
-        : '/stream/movie/$imdbId.json';
-    final Map<String, dynamic> payload =
-        await _fetchJson(Uri.parse('$_torrentioBaseUrl$path'));
-    final List<dynamic> rows =
-        payload['streams'] as List<dynamic>? ?? const <dynamic>[];
+    final List<dynamic> rows = await _fetchBuiltInStreamRows(
+      imdbId: imdbId,
+      mediaType: mediaType,
+      seasonNumber: seasonNumber,
+      episodeNumber: episodeNumber,
+    );
     return rows
         .map((dynamic item) => item as Map<String, dynamic>)
         .map((Map<String, dynamic> item) => _streamFromTorrentio(item))
         .whereType<StreamSource>()
         .toList(growable: false);
+  }
+
+  Future<List<dynamic>> _fetchBuiltInStreamRows({
+    required String imdbId,
+    required String mediaType,
+    int? seasonNumber,
+    int? episodeNumber,
+  }) async {
+    final String path = mediaType == 'tv'
+        ? '/stream/series/$imdbId:${seasonNumber ?? 1}:${episodeNumber ?? 1}.json'
+        : '/stream/movie/$imdbId.json';
+    final Map<String, dynamic> payload =
+        await _fetchJson(Uri.parse('$_torrentioBaseUrl$path'));
+    return payload['streams'] as List<dynamic>? ?? const <dynamic>[];
   }
 
   Future<IndexerStatusDetail> _probeIndexer(_IndexerDefinition indexer) async {
@@ -155,8 +173,7 @@ class StreamCatalogService {
 
   Future<Map<String, dynamic>> _fetchJson(Uri uri) async {
     final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 25)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+      ..connectionTimeout = const Duration(seconds: 25);
     try {
       final HttpClientRequest request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
@@ -164,15 +181,17 @@ class StreamCatalogService {
         HttpHeaders.userAgentHeader,
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       );
-      
-      final HttpClientResponse response = await request.close().timeout(const Duration(seconds: 20));
+
+      final HttpClientResponse response =
+          await request.close().timeout(const Duration(seconds: 20));
       if (response.statusCode != HttpStatus.ok) {
+        final String raw = await response.transform(utf8.decoder).join();
         throw HttpException(
-          'Request failed with status ${response.statusCode}',
+          'Torrentio request failed with status ${response.statusCode}: $raw',
           uri: uri,
         );
       }
-      
+
       final String raw = await response.transform(utf8.decoder).join();
       return jsonDecode(raw) as Map<String, dynamic>;
     } finally {

@@ -159,17 +159,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.detail)),
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) {
         return;
       }
+      final String message = 'Could not verify TorBox API key: $error';
       setState(() {
         _saving = false;
         _keyConfigured = false;
-        _torBoxStatus = 'Could not verify that TorBox API key.';
+        _torBoxStatus = message;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not verify that TorBox API key.')),
+        SnackBar(content: Text(message)),
       );
     }
   }
