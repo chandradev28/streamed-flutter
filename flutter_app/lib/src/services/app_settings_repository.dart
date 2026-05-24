@@ -33,13 +33,27 @@ class AppSettingsRepository {
     await saveSettings(settings.copyWith(clearApiKey: true));
   }
 
-  Future<DnsProvider> getDnsProvider() async {
-    return (await loadSettings()).dnsProvider;
+  Future<String?> getRealDebridApiKey() async {
+    return (await loadSettings()).realDebridApiKey;
   }
 
-  Future<void> saveDnsProvider(DnsProvider provider) async {
+  Future<void> saveRealDebridApiKey(String apiKey) async {
     final AppSettings settings = await loadSettings();
-    await saveSettings(settings.copyWith(dnsProvider: provider));
+    await saveSettings(settings.copyWith(realDebridApiKey: apiKey));
+  }
+
+  Future<void> clearRealDebridApiKey() async {
+    final AppSettings settings = await loadSettings();
+    await saveSettings(settings.copyWith(clearRealDebridApiKey: true));
+  }
+
+  Future<String> getPreferredDebridProvider() async {
+    return (await loadSettings()).preferredDebridProvider;
+  }
+
+  Future<void> savePreferredDebridProvider(String provider) async {
+    final AppSettings settings = await loadSettings();
+    await saveSettings(settings.copyWith(preferredDebridProvider: provider));
   }
 
   Future<bool> getUseAddons() async {

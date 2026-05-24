@@ -95,7 +95,8 @@ class FakeMediaService implements MediaCatalogService {
   Future<List<MediaSummary>> getNowPlayingMovies() async => nowPlaying;
 
   @override
-  Future<List<EpisodeItem>> getSeasonEpisodes(int tvId, int seasonNumber) async {
+  Future<List<EpisodeItem>> getSeasonEpisodes(
+      int tvId, int seasonNumber) async {
     return episodes;
   }
 
@@ -135,21 +136,25 @@ class FakeAppSettingsRepository extends AppSettingsRepository {
   }
 
   @override
-  Future<DnsProvider> getDnsProvider() async => _settings.dnsProvider;
+  Future<String?> getTorBoxApiKey() async => _settings.torBoxApiKey;
 
   @override
-  Future<String?> getTorBoxApiKey() async => _settings.torBoxApiKey;
+  Future<void> clearRealDebridApiKey() async {
+    _settings = _settings.copyWith(clearRealDebridApiKey: true);
+  }
+
+  @override
+  Future<String?> getRealDebridApiKey() async => _settings.realDebridApiKey;
+
+  @override
+  Future<String> getPreferredDebridProvider() async =>
+      _settings.preferredDebridProvider;
 
   @override
   Future<bool> getUseAddons() async => _settings.useAddons;
 
   @override
   Future<AppSettings> loadSettings() async => _settings;
-
-  @override
-  Future<void> saveDnsProvider(DnsProvider provider) async {
-    _settings = _settings.copyWith(dnsProvider: provider);
-  }
 
   @override
   Future<void> saveSettings(AppSettings settings) async {
@@ -159,6 +164,16 @@ class FakeAppSettingsRepository extends AppSettingsRepository {
   @override
   Future<void> saveTorBoxApiKey(String apiKey) async {
     _settings = _settings.copyWith(torBoxApiKey: apiKey);
+  }
+
+  @override
+  Future<void> saveRealDebridApiKey(String apiKey) async {
+    _settings = _settings.copyWith(realDebridApiKey: apiKey);
+  }
+
+  @override
+  Future<void> savePreferredDebridProvider(String provider) async {
+    _settings = _settings.copyWith(preferredDebridProvider: provider);
   }
 
   @override
@@ -223,6 +238,18 @@ class FakeTorBoxApiService extends TorBoxApiService {
     return torrents
         .where((TorBoxTorrent item) => item.id == torrentId)
         .toList(growable: false);
+  }
+
+  @override
+  Future<Map<String, bool>> checkCached(List<String> hashes) async {
+    return <String, bool>{
+      for (final String hash in hashes)
+        hash.toLowerCase(): torrents.any(
+          (TorBoxTorrent torrent) =>
+              torrent.hash.toLowerCase() == hash.toLowerCase() &&
+              torrent.isReady,
+        ),
+    };
   }
 
   @override

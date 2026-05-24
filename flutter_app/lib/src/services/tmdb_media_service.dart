@@ -112,7 +112,8 @@ class TmdbMediaService implements MediaCatalogService {
   Future<Map<String, dynamic>> _fetchOnce(Uri uri) async {
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
 
     try {
       final HttpClientRequest request = await client.getUrl(uri);
@@ -122,7 +123,8 @@ class TmdbMediaService implements MediaCatalogService {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       );
 
-      final HttpClientResponse response = await request.close().timeout(const Duration(seconds: 12));
+      final HttpClientResponse response =
+          await request.close().timeout(const Duration(seconds: 12));
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
           'TMDB request failed with status ${response.statusCode}',

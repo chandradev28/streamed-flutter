@@ -7,7 +7,8 @@ import 'local_json_store.dart';
 class StremioAddonsService {
   StremioAddonsService({
     LocalJsonStore? store,
-  }) : _store = store ?? const LocalJsonStore('.streamed_installed_addons.json');
+  }) : _store =
+            store ?? const LocalJsonStore('.streamed_installed_addons.json');
 
   final LocalJsonStore _store;
 
@@ -57,8 +58,11 @@ class StremioAddonsService {
     final AddonManifest addon = AddonManifest.fromJson(
       <String, dynamic>{
         ...payload,
-        'id': (payload['id'] as String?) ?? _makeAddonId(manifestUri.toString()),
-        'url': _stripManifestPath(manifestUri).toString().replaceAll(RegExp(r'/$'), ''),
+        'id':
+            (payload['id'] as String?) ?? _makeAddonId(manifestUri.toString()),
+        'url': _stripManifestPath(manifestUri)
+            .toString()
+            .replaceAll(RegExp(r'/$'), ''),
         'originalUrl': manifestUri.toString(),
       },
     );
@@ -206,7 +210,9 @@ class StremioAddonsService {
     final Map<String, dynamic> behaviorHints =
         item['behaviorHints'] as Map<String, dynamic>? ??
             const <String, dynamic>{};
-    final String? directUrl = _readString(item['url']);
+    final String? directUrl =
+        _readString(item['url']) ?? _readString(item['externalUrl']);
+    final List<String> sourceTrackers = _extractTrackers(item['sources']);
     final String? infoHash = _normalizeInfoHash(
       _readString(item['infoHash']) ??
           _extractInfoHashFromSources(item['sources']) ??
@@ -239,13 +245,17 @@ class StremioAddonsService {
       quality: _extractQuality(text),
       sizeLabel: _extractSize(text, behaviorHints['videoSize']),
       isCached: cached,
+      cacheProvider: cached ? _cacheProviderLabel(text, directUrl) : null,
       addonId: addon.id,
       infoHash: infoHash,
       directUrl: directUrl,
-      fileIndex:
-          ((item['fileIdx'] ?? item['fileIndex']) as num?)?.toInt(),
+      fileIndex: ((item['fileIdx'] ?? item['fileIndex']) as num?)?.toInt(),
       fileName: _readString(behaviorHints['filename']),
       videoSizeBytes: (behaviorHints['videoSize'] as num?)?.toInt(),
+      magnetUri: _readString(item['magnetUri']) ??
+          _buildMagnetUri(infoHash, sourceTrackers),
+      sourceTrackers: sourceTrackers,
+      streamHeaders: _readProxyRequestHeaders(behaviorHints),
     );
   }
 
@@ -261,7 +271,8 @@ class StremioAddonsService {
   Future<Map<String, dynamic>> _fetchJson(Uri uri) async {
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 30)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
     try {
       final HttpClientRequest request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
@@ -269,15 +280,16 @@ class StremioAddonsService {
         HttpHeaders.userAgentHeader,
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       );
-      
-      final HttpClientResponse response = await request.close().timeout(const Duration(seconds: 20));
+
+      final HttpClientResponse response =
+          await request.close().timeout(const Duration(seconds: 20));
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
           'Addon request failed with status ${response.statusCode}',
           uri: uri,
         );
       }
-      
+
       final String raw = await response.transform(utf8.decoder).join();
       return jsonDecode(raw) as Map<String, dynamic>;
     } on FormatException {
@@ -327,12 +339,13 @@ class StremioAddonsService {
     return uri.replace(path: path);
   }
 
-  Uri _buildStreamUri(AddonManifest addon, String contentType, String streamId) {
+  Uri _buildStreamUri(
+      AddonManifest addon, String contentType, String streamId) {
     final Uri originalUri = Uri.parse(addon.originalUrl);
     final Uri baseUri = Uri.parse(addon.url);
     return baseUri.replace(
-      path:
-          '${baseUri.path}/stream/$contentType/$streamId.json'.replaceAll('//', '/'),
+      path: '${baseUri.path}/stream/$contentType/$streamId.json'
+          .replaceAll('//', '/'),
       queryParameters: originalUri.queryParameters.isEmpty
           ? null
           : originalUri.queryParameters,
@@ -411,6 +424,21 @@ class StremioAddonsService {
     ).hasMatch(haystack);
   }
 
+  String _cacheProviderLabel(String text, String? directUrl) {
+    final String haystack = '${directUrl ?? ''}\n$text';
+    if (RegExp(r'(torbox|\btb\b)', caseSensitive: false).hasMatch(haystack)) {
+      return 'TB+';
+    }
+    if (RegExp(r'(real.?debrid|\brd\b)', caseSensitive: false)
+        .hasMatch(haystack)) {
+      return 'RD+';
+    }
+    if (RegExp(r'premiumize', caseSensitive: false).hasMatch(haystack)) {
+      return 'PM';
+    }
+    return 'Cached';
+  }
+
   String? _extractInfoHashFromSources(dynamic sources) {
     if (sources is! List<dynamic>) {
       return null;
@@ -428,7 +456,62 @@ class StremioAddonsService {
     return null;
   }
 
-  String? _extractInfoHashFromBehaviorHints(Map<String, dynamic> behaviorHints) {
+  List<String> _extractTrackers(dynamic sources) {
+    if (sources is! List<dynamic>) {
+      return const <String>[];
+    }
+    return sources
+        .map(_readString)
+        .whereType<String>()
+        .where(
+          (String item) =>
+              item.startsWith('tracker:', 0) ||
+              item.startsWith('http://') ||
+              item.startsWith('https://') ||
+              item.startsWith('udp://'),
+        )
+        .toSet()
+        .toList(growable: false);
+  }
+
+  String? _buildMagnetUri(String? hash, List<String> trackers) {
+    if (hash == null || hash.trim().isEmpty) {
+      return null;
+    }
+    final StringBuffer buffer =
+        StringBuffer('magnet:?xt=urn:btih:${hash.trim()}');
+    for (final String tracker in trackers) {
+      final String normalized =
+          tracker.replaceFirst(RegExp(r'^tracker:', caseSensitive: false), '');
+      if (normalized.trim().isEmpty) {
+        continue;
+      }
+      buffer.write('&tr=${Uri.encodeComponent(normalized.trim())}');
+    }
+    return buffer.toString();
+  }
+
+  Map<String, String> _readProxyRequestHeaders(
+    Map<String, dynamic> behaviorHints,
+  ) {
+    final dynamic proxyHeaders = behaviorHints['proxyHeaders'];
+    if (proxyHeaders is! Map<String, dynamic>) {
+      return const <String, String>{};
+    }
+    final dynamic requestHeaders = proxyHeaders['request'];
+    if (requestHeaders is! Map<String, dynamic>) {
+      return const <String, String>{};
+    }
+    return requestHeaders.map(
+      (String key, dynamic value) => MapEntry<String, String>(
+        key,
+        value.toString(),
+      ),
+    );
+  }
+
+  String? _extractInfoHashFromBehaviorHints(
+      Map<String, dynamic> behaviorHints) {
     final String? bingeGroup = _readString(behaviorHints['bingeGroup']);
     return _extractInfoHash(bingeGroup);
   }

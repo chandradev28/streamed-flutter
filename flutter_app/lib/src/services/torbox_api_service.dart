@@ -292,6 +292,100 @@ class TorBoxApiService {
     }
   }
 
+  Future<Map<String, bool>> checkCached(List<String> hashes) async {
+    final List<String> normalizedHashes = hashes
+        .map((String hash) => hash.trim().toLowerCase())
+        .where((String hash) => RegExp(r'^[a-f0-9]{40}$').hasMatch(hash))
+        .toSet()
+        .toList(growable: false);
+    if (normalizedHashes.isEmpty) {
+      return const <String, bool>{};
+    }
+
+    final Map<String, bool> results = <String, bool>{
+      for (final String hash in normalizedHashes) hash: false,
+    };
+
+    const int batchSize = 50;
+    for (int start = 0; start < normalizedHashes.length; start += batchSize) {
+      final List<String> batch =
+          normalizedHashes.skip(start).take(batchSize).toList(growable: false);
+      final Map<String, dynamic> payload =
+          await _requestCheckCachedBatch(batch);
+      final dynamic data = payload['data'];
+      if (data is Map<String, dynamic>) {
+        for (final String hash in batch) {
+          results[hash] =
+              _isCachedValue(data[hash] ?? data[hash.toUpperCase()]);
+        }
+      } else if (data is List<dynamic>) {
+        final Set<String> cachedHashes = data
+            .map((dynamic item) {
+              if (item is Map<String, dynamic>) {
+                return item['hash']?.toString().toLowerCase();
+              }
+              return item?.toString().toLowerCase();
+            })
+            .whereType<String>()
+            .toSet();
+        for (final String hash in batch) {
+          results[hash] = cachedHashes.contains(hash);
+        }
+      }
+    }
+
+    return results;
+  }
+
+  Future<Map<String, dynamic>> _requestCheckCachedBatch(
+    List<String> hashes,
+  ) async {
+    try {
+      return await _requestJson(
+        'GET',
+        Uri.parse('$_baseUrl/torrents/checkcached').replace(
+          queryParameters: <String, String>{
+            'hash': hashes.join(','),
+            'format': 'object',
+            'list_files': 'false',
+          },
+        ),
+      );
+    } on TorBoxApiException {
+      return _requestJson(
+        'POST',
+        Uri.parse('$_baseUrl/torrents/checkcached'),
+        body: <String, dynamic>{
+          'hashes': hashes,
+          'format': 'object',
+          'list_files': false,
+        },
+      );
+    }
+  }
+
+  bool _isCachedValue(dynamic value) {
+    if (value == null || value == false) {
+      return false;
+    }
+    if (value == true) {
+      return true;
+    }
+    if (value is List<dynamic>) {
+      return value.isNotEmpty;
+    }
+    if (value is Map<String, dynamic>) {
+      if (value['cached'] == true || value['is_cached'] == true) {
+        return true;
+      }
+      if (value['files'] is List<dynamic>) {
+        return (value['files'] as List<dynamic>).isNotEmpty;
+      }
+      return value.isNotEmpty;
+    }
+    return false;
+  }
+
   Future<Map<String, dynamic>> _requestJson(
     String method,
     Uri uri, {

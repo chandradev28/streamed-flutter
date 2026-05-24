@@ -2,9 +2,18 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/torbox_models.dart';
+import 'real_debrid_api_service.dart';
+import 'torbox_api_service.dart';
 
 class StreamCatalogService {
-  const StreamCatalogService();
+  StreamCatalogService({
+    TorBoxApiService? torBoxApiService,
+    RealDebridApiService? realDebridApiService,
+  })  : torBoxApiService = torBoxApiService ?? TorBoxApiService(),
+        realDebridApiService = realDebridApiService ?? RealDebridApiService();
+
+  final TorBoxApiService torBoxApiService;
+  final RealDebridApiService realDebridApiService;
 
   static const String _torrentioBaseUrl = 'https://torrentio.strem.fun';
 
@@ -73,6 +82,7 @@ class StreamCatalogService {
     required String mediaType,
     int? seasonNumber,
     int? episodeNumber,
+    bool cachedOnly = true,
   }) async {
     final List<dynamic> rows = await _fetchBuiltInStreamRows(
       imdbId: imdbId,
@@ -80,11 +90,86 @@ class StreamCatalogService {
       seasonNumber: seasonNumber,
       episodeNumber: episodeNumber,
     );
-    return rows
+    final List<StreamSource> streams = rows
         .map((dynamic item) => item as Map<String, dynamic>)
         .map((Map<String, dynamic> item) => _streamFromTorrentio(item))
         .whereType<StreamSource>()
         .toList(growable: false);
+    if (!cachedOnly || streams.isEmpty) {
+      return streams;
+    }
+
+    final List<String> hashes = streams
+        .map((StreamSource source) => source.infoHash)
+        .whereType<String>()
+        .toSet()
+        .toList(growable: false);
+    final Map<String, bool> torBoxCached =
+        await _checkTorBoxCachedSafely(hashes);
+    final Map<String, bool> realDebridCached =
+        await _checkRealDebridCachedSafely(hashes);
+    return streams
+        .map(
+          (StreamSource source) => _markCachedProviders(
+            source,
+            torBoxCached[source.infoHash] == true,
+            realDebridCached[source.infoHash] == true,
+          ),
+        )
+        .where((StreamSource source) => source.isCached)
+        .toList(growable: false);
+  }
+
+  Future<List<StreamSource>> annotateCacheStatus(
+    List<StreamSource> streams,
+  ) async {
+    final List<String> hashes = streams
+        .map((StreamSource source) => source.infoHash)
+        .whereType<String>()
+        .toSet()
+        .toList(growable: false);
+    if (hashes.isEmpty) {
+      return streams;
+    }
+
+    final Map<String, bool> torBoxCached =
+        await _checkTorBoxCachedSafely(hashes);
+    final Map<String, bool> realDebridCached =
+        await _checkRealDebridCachedSafely(hashes);
+    return streams
+        .map(
+          (StreamSource source) => _markCachedProviders(
+            source,
+            source.isTorBoxCached || torBoxCached[source.infoHash] == true,
+            source.isRealDebridCached ||
+                realDebridCached[source.infoHash] == true,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<Map<String, bool>> _checkTorBoxCachedSafely(
+      List<String> hashes) async {
+    try {
+      if (!await torBoxApiService.isConfigured()) {
+        return const <String, bool>{};
+      }
+      return torBoxApiService.checkCached(hashes);
+    } catch (_) {
+      return const <String, bool>{};
+    }
+  }
+
+  Future<Map<String, bool>> _checkRealDebridCachedSafely(
+      List<String> hashes) async {
+    try {
+      if (!await realDebridApiService.isConfigured()) {
+        return const <String, bool>{};
+      }
+      return realDebridApiService.checkCached(hashes);
+    } catch (_) {
+      return const <String, bool>{};
+    }
   }
 
   Future<List<dynamic>> _fetchBuiltInStreamRows({
@@ -132,7 +217,9 @@ class StreamCatalogService {
     final Map<String, dynamic> behaviorHints =
         json['behaviorHints'] as Map<String, dynamic>? ??
             const <String, dynamic>{};
-    final String? directUrl = _readString(json['url']);
+    final String? directUrl =
+        _readString(json['url']) ?? _readString(json['externalUrl']);
+    final List<String> sourceTrackers = _extractTrackers(json['sources']);
     final String? infoHash = _normalizeInfoHash(
       _readString(json['infoHash']) ??
           _extractInfoHashFromBehaviorHints(behaviorHints) ??
@@ -163,11 +250,47 @@ class StreamCatalogService {
       quality: _extractQuality(text),
       sizeLabel: _extractSize(text, behaviorHints['videoSize']),
       isCached: cached,
+      cacheProvider: cached ? 'TB+' : null,
       infoHash: infoHash,
       directUrl: directUrl,
       fileIndex: ((json['fileIdx'] ?? json['fileIndex']) as num?)?.toInt(),
       fileName: _readString(behaviorHints['filename']),
       videoSizeBytes: (behaviorHints['videoSize'] as num?)?.toInt(),
+      magnetUri: _readString(json['magnetUri']) ??
+          _buildMagnetUri(infoHash, sourceTrackers),
+      sourceTrackers: sourceTrackers,
+      streamHeaders: _readProxyRequestHeaders(behaviorHints),
+    );
+  }
+
+  StreamSource _markCachedProviders(
+    StreamSource source,
+    bool torBoxCached,
+    bool realDebridCached,
+  ) {
+    final List<String> labels = <String>[
+      if (torBoxCached) 'TB+',
+      if (realDebridCached) 'RD+',
+    ];
+    return StreamSource(
+      id: source.id,
+      provider: source.provider,
+      sourceDisplayName: source.sourceDisplayName,
+      title: source.title,
+      description: source.description,
+      quality: source.quality,
+      sizeLabel: source.sizeLabel,
+      isCached: labels.isNotEmpty,
+      cacheProvider: labels.isEmpty ? source.cacheProvider : labels.join(' / '),
+      addonId: source.addonId,
+      infoHash: source.infoHash,
+      directUrl: source.directUrl,
+      fileIndex: source.fileIndex,
+      fileName: source.fileName,
+      videoSizeBytes: source.videoSizeBytes,
+      magnetUri: source.magnetUri,
+      sourceTrackers: source.sourceTrackers,
+      streamHeaders: source.streamHeaders,
     );
   }
 
@@ -186,17 +309,42 @@ class StreamCatalogService {
           await request.close().timeout(const Duration(seconds: 20));
       if (response.statusCode != HttpStatus.ok) {
         final String raw = await response.transform(utf8.decoder).join();
+        if (response.statusCode == HttpStatus.forbidden &&
+            raw.toLowerCase().contains('cloudflare')) {
+          throw HttpException(
+            'Torrentio blocked this request with Cloudflare. Try another network, enable stream addons, or use Torboxers engine search.',
+            uri: uri,
+          );
+        }
         throw HttpException(
-          'Torrentio request failed with status ${response.statusCode}: $raw',
+          'Torrentio request failed with status ${response.statusCode}: ${_compactBody(raw)}',
           uri: uri,
         );
       }
 
       final String raw = await response.transform(utf8.decoder).join();
-      return jsonDecode(raw) as Map<String, dynamic>;
+      try {
+        return jsonDecode(raw) as Map<String, dynamic>;
+      } on FormatException {
+        if (raw.toLowerCase().contains('cloudflare')) {
+          throw HttpException(
+            'Torrentio returned a Cloudflare challenge instead of stream data. Try another network, enable stream addons, or use Torboxers engine search.',
+            uri: uri,
+          );
+        }
+        rethrow;
+      }
     } finally {
       client.close(force: true);
     }
+  }
+
+  String _compactBody(String raw) {
+    final String compact = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.length <= 220) {
+      return compact;
+    }
+    return '${compact.substring(0, 220)}...';
   }
 
   String? _readString(dynamic value) {
@@ -281,6 +429,60 @@ class StreamCatalogService {
       }
     }
     return null;
+  }
+
+  List<String> _extractTrackers(dynamic sources) {
+    if (sources is! List<dynamic>) {
+      return const <String>[];
+    }
+    return sources
+        .map(_readString)
+        .whereType<String>()
+        .where(
+          (String item) =>
+              item.startsWith('tracker:', 0) ||
+              item.startsWith('http://') ||
+              item.startsWith('https://') ||
+              item.startsWith('udp://'),
+        )
+        .toSet()
+        .toList(growable: false);
+  }
+
+  String? _buildMagnetUri(String? hash, List<String> trackers) {
+    if (hash == null || hash.trim().isEmpty) {
+      return null;
+    }
+    final StringBuffer buffer =
+        StringBuffer('magnet:?xt=urn:btih:${hash.trim()}');
+    for (final String tracker in trackers) {
+      final String normalized =
+          tracker.replaceFirst(RegExp(r'^tracker:', caseSensitive: false), '');
+      if (normalized.trim().isEmpty) {
+        continue;
+      }
+      buffer.write('&tr=${Uri.encodeComponent(normalized.trim())}');
+    }
+    return buffer.toString();
+  }
+
+  Map<String, String> _readProxyRequestHeaders(
+    Map<String, dynamic> behaviorHints,
+  ) {
+    final dynamic proxyHeaders = behaviorHints['proxyHeaders'];
+    if (proxyHeaders is! Map<String, dynamic>) {
+      return const <String, String>{};
+    }
+    final dynamic requestHeaders = proxyHeaders['request'];
+    if (requestHeaders is! Map<String, dynamic>) {
+      return const <String, String>{};
+    }
+    return requestHeaders.map(
+      (String key, dynamic value) => MapEntry<String, String>(
+        key,
+        value.toString(),
+      ),
+    );
   }
 
   String? _extractInfoHash(String? value) {

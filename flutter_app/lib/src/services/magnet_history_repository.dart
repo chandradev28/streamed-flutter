@@ -36,7 +36,9 @@ class MagnetHistoryRepository {
 
   Future<Set<String>> getHashes() async {
     final List<MagnetHistoryItem> items = await getHistory();
-    return items.map((MagnetHistoryItem item) => item.hash.toLowerCase()).toSet();
+    return items
+        .map((MagnetHistoryItem item) => item.hash.toLowerCase())
+        .toSet();
   }
 
   Future<void> addHashes(Iterable<String> hashes) async {
@@ -64,7 +66,8 @@ class MagnetHistoryRepository {
     final String normalized = hash.toLowerCase();
     final List<MagnetHistoryItem> items = await getHistory();
     final List<MagnetHistoryItem> updated = items
-        .where((MagnetHistoryItem item) => item.hash.toLowerCase() != normalized)
+        .where(
+            (MagnetHistoryItem item) => item.hash.toLowerCase() != normalized)
         .toList(growable: false);
     await _saveItems(updated);
   }

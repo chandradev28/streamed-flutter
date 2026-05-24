@@ -123,8 +123,8 @@ bool isValidVideoFile(String filename) {
 String extractEpisodeTitle(String filename, int season, int episode) {
   final String name = _basename(filename);
   final String withoutExtension = name.replaceFirst(RegExp(r'\.[^.]+$'), '');
-  String title =
-      withoutExtension.replaceFirst(RegExp(r'^.*?[Ss]\d{1,2}[Ee]\d{1,3}', caseSensitive: false), '');
+  String title = withoutExtension.replaceFirst(
+      RegExp(r'^.*?[Ss]\d{1,2}[Ee]\d{1,3}', caseSensitive: false), '');
 
   title = title
       .replaceAll(RegExp(r'\[.*?\]'), '')
@@ -181,23 +181,29 @@ List<SeasonFileGroup> parseSeasonPack(List<TorBoxTorrentFile> files) {
     );
   }
 
-  final Map<int, List<ParsedEpisodeFile>> grouped = <int, List<ParsedEpisodeFile>>{};
+  final Map<int, List<ParsedEpisodeFile>> grouped =
+      <int, List<ParsedEpisodeFile>>{};
   for (final ParsedEpisodeFile episode in episodes) {
-    grouped.putIfAbsent(episode.season, () => <ParsedEpisodeFile>[]).add(episode);
+    grouped
+        .putIfAbsent(episode.season, () => <ParsedEpisodeFile>[])
+        .add(episode);
   }
 
   final List<SeasonFileGroup> seasons = grouped.entries
       .map(
         (MapEntry<int, List<ParsedEpisodeFile>> entry) => SeasonFileGroup(
           season: entry.key,
-          episodes: (entry.value..sort(
-                  (ParsedEpisodeFile a, ParsedEpisodeFile b) => a.episode.compareTo(b.episode),
+          episodes: (entry.value
+                ..sort(
+                  (ParsedEpisodeFile a, ParsedEpisodeFile b) =>
+                      a.episode.compareTo(b.episode),
                 ))
               .toList(growable: false),
         ),
       )
       .toList(growable: true)
-    ..sort((SeasonFileGroup a, SeasonFileGroup b) => a.season.compareTo(b.season));
+    ..sort(
+        (SeasonFileGroup a, SeasonFileGroup b) => a.season.compareTo(b.season));
 
   if (extras.isNotEmpty) {
     seasons.add(SeasonFileGroup(season: -1, episodes: extras));
@@ -207,14 +213,16 @@ List<SeasonFileGroup> parseSeasonPack(List<TorBoxTorrentFile> files) {
 }
 
 bool isSeasonPack(List<TorBoxTorrentFile> files) {
-  final List<TorBoxTorrentFile> videoFiles =
-      files.where((TorBoxTorrentFile file) => isValidVideoFile(file.name)).toList(growable: false);
+  final List<TorBoxTorrentFile> videoFiles = files
+      .where((TorBoxTorrentFile file) => isValidVideoFile(file.name))
+      .toList(growable: false);
   return videoFiles.length > 1;
 }
 
 bool isMovieTorrent(List<TorBoxTorrentFile> files) {
-  final List<TorBoxTorrentFile> videoFiles =
-      files.where((TorBoxTorrentFile file) => isValidVideoFile(file.name)).toList(growable: false);
+  final List<TorBoxTorrentFile> videoFiles = files
+      .where((TorBoxTorrentFile file) => isValidVideoFile(file.name))
+      .toList(growable: false);
   if (videoFiles.isEmpty) {
     return false;
   }

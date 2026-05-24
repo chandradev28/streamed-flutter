@@ -5,11 +5,10 @@ import '../services/stream_catalog_service.dart';
 import '../theme/app_colors.dart';
 
 class IndexerStatusScreen extends StatefulWidget {
-  const IndexerStatusScreen({
+  IndexerStatusScreen({
     super.key,
     StreamCatalogService? streamCatalogService,
-  }) : streamCatalogService =
-            streamCatalogService ?? const StreamCatalogService();
+  }) : streamCatalogService = streamCatalogService ?? StreamCatalogService();
 
   final StreamCatalogService streamCatalogService;
 

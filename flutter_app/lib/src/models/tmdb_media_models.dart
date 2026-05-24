@@ -16,15 +16,14 @@ class MediaSummary {
   final String releaseDate;
 
   factory MediaSummary.fromJson(Map<String, dynamic> json) {
-    final String inferredType =
-        (json['media_type'] as String?) ?? (json.containsKey('title') ? 'movie' : 'tv');
+    final String inferredType = (json['media_type'] as String?) ??
+        (json.containsKey('title') ? 'movie' : 'tv');
 
     return MediaSummary(
       id: json['id'] as int,
       mediaType: inferredType,
-      title: (json['title'] as String?) ??
-          (json['name'] as String?) ??
-          'Unknown',
+      title:
+          (json['title'] as String?) ?? (json['name'] as String?) ?? 'Unknown',
       posterPath: json['poster_path'] as String?,
       backdropPath: json['backdrop_path'] as String?,
       releaseDate: (json['release_date'] as String?) ??
@@ -201,7 +200,8 @@ class MediaDetail {
         ? (json['runtime'] as num?)?.toInt() ?? 0
         : (((json['episode_run_time'] as List<dynamic>?) ?? const <dynamic>[])
                 .isNotEmpty
-            ? (((json['episode_run_time'] as List<dynamic>).first as num).toInt())
+            ? (((json['episode_run_time'] as List<dynamic>).first as num)
+                .toInt())
             : 45);
 
     return MediaDetail(
@@ -218,14 +218,17 @@ class MediaDetail {
           '',
       runtimeMinutes: runtime,
       genres: ((json['genres'] as List<dynamic>?) ?? const <dynamic>[])
-          .map((dynamic item) => GenreItem.fromJson(item as Map<String, dynamic>))
+          .map((dynamic item) =>
+              GenreItem.fromJson(item as Map<String, dynamic>))
           .toList(growable: false),
       seasons: ((json['seasons'] as List<dynamic>?) ?? const <dynamic>[])
-          .map((dynamic item) => SeasonSummary.fromJson(item as Map<String, dynamic>))
+          .map((dynamic item) =>
+              SeasonSummary.fromJson(item as Map<String, dynamic>))
           .toList(growable: false),
       numberOfSeasons: (json['number_of_seasons'] as num?)?.toInt() ?? 0,
       networks: ((json['networks'] as List<dynamic>?) ?? const <dynamic>[])
-          .map((dynamic item) => NetworkItem.fromJson(item as Map<String, dynamic>))
+          .map((dynamic item) =>
+              NetworkItem.fromJson(item as Map<String, dynamic>))
           .toList(growable: false),
       imdbId: json['imdb_id'] as String?,
       cast: cast,

@@ -148,7 +148,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     if ((detail.imdbId ?? '').isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('This title is missing an IMDb ID, so Torboxers cannot search it yet.'),
+          content: Text(
+              'This title is missing an IMDb ID, so Torboxers cannot search it yet.'),
         ),
       );
       return;
@@ -169,14 +170,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
   void _openRelated(MediaSummary item) {
     Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (BuildContext context) => MovieDetailScreen(
-            id: item.id,
-            mediaType: item.mediaType,
-            mediaService: widget.mediaService,
-            favoritesRepository: widget.favoritesRepository,
-          ),
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => MovieDetailScreen(
+          id: item.id,
+          mediaType: item.mediaType,
+          mediaService: widget.mediaService,
+          favoritesRepository: widget.favoritesRepository,
         ),
+      ),
     );
   }
 
@@ -187,15 +188,15 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
 
     Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (BuildContext context) => EpisodeScreen(
-            tvId: detail.id,
-            initialSeason: season.seasonNumber,
-            showName: detail.title,
-            posterPath: season.posterPath ?? detail.posterPath,
-            mediaService: widget.mediaService,
-          ),
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => EpisodeScreen(
+          tvId: detail.id,
+          initialSeason: season.seasonNumber,
+          showName: detail.title,
+          posterPath: season.posterPath ?? detail.posterPath,
+          mediaService: widget.mediaService,
         ),
+      ),
     );
   }
 
@@ -238,7 +239,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
 
     final bool isMovie = detail.mediaType == 'movie';
-    final String genres = detail.genres.take(2).map((GenreItem item) => item.name).join(', ');
+    final String genres =
+        detail.genres.take(2).map((GenreItem item) => item.name).join(', ');
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -266,7 +268,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                             Object error,
                             StackTrace? stackTrace,
                           ) {
-                            return const ColoredBox(color: AppColors.background);
+                            return const ColoredBox(
+                                color: AppColors.background);
                           },
                         ),
                   DecoratedBox(
@@ -381,7 +384,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                                 _MetaText(text: _year(detail.releaseDate)),
                                 const _Dot(),
                                 _MetaText(text: '${detail.runtimeMinutes} min'),
-                                if (!isMovie && detail.numberOfSeasons > 0) ...<Widget>[
+                                if (!isMovie &&
+                                    detail.numberOfSeasons > 0) ...<Widget>[
                                   const _Dot(),
                                   _MetaText(
                                     text: '${detail.numberOfSeasons} Seasons',
@@ -405,7 +409,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                               TextButton(
                                 onPressed: () {
                                   setState(() {
-                                    _showFullDescription = !_showFullDescription;
+                                    _showFullDescription =
+                                        !_showFullDescription;
                                   });
                                 },
                                 child: Text(
@@ -440,7 +445,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                     ),
                   ),
                 ),
-                if (!isMovie && detail.seasons.any((SeasonSummary season) => season.seasonNumber > 0))
+                if (!isMovie &&
+                    detail.seasons
+                        .any((SeasonSummary season) => season.seasonNumber > 0))
                   SliverToBoxAdapter(
                     child: _HorizontalSection(
                       title: 'Seasons',
@@ -449,7 +456,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Row(
                           children: detail.seasons
-                              .where((SeasonSummary season) => season.seasonNumber > 0)
+                              .where((SeasonSummary season) =>
+                                  season.seasonNumber > 0)
                               .map(
                                 (SeasonSummary season) => Padding(
                                   padding: const EdgeInsets.only(right: 14),
@@ -626,6 +634,7 @@ class _Dot extends StatelessWidget {
     );
   }
 }
+
 class _HorizontalSection extends StatelessWidget {
   const _HorizontalSection({
     required this.title,
@@ -690,7 +699,8 @@ class _SeasonCard extends StatelessWidget {
             (season.posterPath ?? fallbackPosterPath) == null
                 ? const ColoredBox(color: AppColors.cardBackground)
                 : Image.network(
-                    getImageUrl(season.posterPath ?? fallbackPosterPath, 'w185'),
+                    getImageUrl(
+                        season.posterPath ?? fallbackPosterPath, 'w185'),
                     fit: BoxFit.cover,
                     errorBuilder: (
                       BuildContext context,
@@ -783,14 +793,17 @@ class _CastCard extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withOpacity(0.15), width: 2),
+              border:
+                  Border.all(color: Colors.white.withOpacity(0.15), width: 2),
             ),
             child: member.profilePath == null
                 ? ColoredBox(
                     color: const Color(0xFF333333),
                     child: Center(
                       child: Text(
-                        nameParts.isEmpty ? '?' : nameParts.first.substring(0, 1),
+                        nameParts.isEmpty
+                            ? '?'
+                            : nameParts.first.substring(0, 1),
                         style: const TextStyle(
                           color: AppColors.text,
                           fontSize: 22,

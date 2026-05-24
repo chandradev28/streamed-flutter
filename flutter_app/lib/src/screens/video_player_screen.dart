@@ -1,6 +1,7 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/torbox_models.dart';
@@ -73,6 +74,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _initialized = false;
   bool _showControls = true;
   String? _error;
+  _PlaybackIssue? _playbackIssue;
   int _lastPersistedSecond = -1;
 
   @override
@@ -95,6 +97,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       setState(() {
         _loading = false;
         _error = 'No direct stream URL or TorBox torrent was provided.';
+        _playbackIssue = const _PlaybackIssue(
+          title: 'Nothing to play yet',
+          body:
+              'This screen needs either a direct stream URL or a TorBox torrent.',
+          showExternalActions: false,
+        );
       });
       return;
     }
@@ -119,6 +127,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         setState(() {
           _loading = false;
           _error = 'This torrent does not expose playable files yet.';
+          _playbackIssue = const _PlaybackIssue(
+            title: 'No playable files found',
+            body:
+                'TorBox returned the torrent, but it does not expose a playable video file yet. Refresh the library and try again.',
+            showExternalActions: false,
+          );
         });
       }
     } catch (error) {
@@ -128,7 +142,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       setState(() {
         _loading = false;
-        _error = error.toString();
+        _error = _friendlyError(error);
+        _playbackIssue = _describePlaybackIssue(error);
       });
     }
   }
@@ -186,18 +201,48 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     final List<int> videoIndices = getAllVideoFiles(files);
     if (videoIndices.isNotEmpty) {
-      return files[videoIndices.first].id;
+      final List<TorBoxTorrentFile> videoFiles = videoIndices
+          .map((int index) => files[index])
+          .toList(growable: false)
+        ..sort(_comparePlaybackPreference);
+      return videoFiles.first.id;
     }
 
     return files.first.id;
   }
 
   String _normalizeFileName(String value) {
-    return value
-        .split(RegExp(r'[/\\]'))
-        .last
-        .trim()
-        .toLowerCase();
+    return value.split(RegExp(r'[/\\]')).last.trim().toLowerCase();
+  }
+
+  int _comparePlaybackPreference(
+    TorBoxTorrentFile a,
+    TorBoxTorrentFile b,
+  ) {
+    final int codecComparison =
+        _codecPreferenceScore(a).compareTo(_codecPreferenceScore(b));
+    if (codecComparison != 0) {
+      return codecComparison;
+    }
+    return b.size.compareTo(a.size);
+  }
+
+  int _codecPreferenceScore(TorBoxTorrentFile file) {
+    final String name = file.displayName.toLowerCase();
+    if (_looksLikeHevc(name)) {
+      return 10;
+    }
+    if (RegExp(r'(h\.?264|x264|avc)', caseSensitive: false).hasMatch(name)) {
+      return 0;
+    }
+    return 2;
+  }
+
+  bool _looksLikeHevc(String value) {
+    return RegExp(
+      r'(hevc|h\.?265|x265|10bit|10-bit|hi10|hvc1)',
+      caseSensitive: false,
+    ).hasMatch(value);
   }
 
   Future<void> _resolveFile(int fileId) async {
@@ -209,6 +254,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _playbackIssue = null;
       _activeFileId = fileId;
     });
 
@@ -224,6 +270,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       setState(() {
         _loading = false;
         _error = 'Could not resolve a stream URL for this file.';
+        _playbackIssue = const _PlaybackIssue(
+          title: 'Could not get stream link',
+          body:
+              'TorBox did not return a playable link for this file yet. Try refreshing the library or choose another file.',
+          showExternalActions: false,
+        );
       });
       return;
     }
@@ -236,48 +288,57 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _openResolvedMedia(String url) async {
+    VideoPlayerController? nextController;
     try {
+      final VideoPlayerController? previousController = _controller;
       setState(() {
+        _controller = null;
         _loading = true;
         _error = null;
+        _playbackIssue = null;
         _initialized = false;
+        _position = Duration.zero;
+        _duration = Duration.zero;
       });
 
       _progressTimer?.cancel();
-      await _controller?.dispose();
+      previousController?.removeListener(_handleControllerTick);
+      await previousController?.dispose();
 
-      final VideoPlayerController controller =
-          VideoPlayerController.networkUrl(
+      nextController = VideoPlayerController.networkUrl(
         Uri.parse(url),
         httpHeaders: widget.streamHeaders,
       );
-      await controller.initialize();
-      await controller.setLooping(false);
-      await controller.play();
+      await nextController.initialize();
+      await nextController.setLooping(false);
+      await nextController.play();
 
       if (widget.startPositionMs != null && widget.startPositionMs! > 0) {
-        await controller.seekTo(Duration(milliseconds: widget.startPositionMs!));
+        await nextController.seekTo(
+          Duration(milliseconds: widget.startPositionMs!),
+        );
       }
 
-      controller.addListener(_handleControllerTick);
+      nextController.addListener(_handleControllerTick);
       _progressTimer = Timer.periodic(
         const Duration(seconds: 1),
         (_) => _handleControllerTick(),
       );
 
       if (!mounted) {
-        await controller.dispose();
+        await nextController.dispose();
         return;
       }
 
       setState(() {
-        _controller = controller;
+        _controller = nextController;
         _initialized = true;
         _loading = false;
-        _duration = controller.value.duration;
-        _position = controller.value.position;
+        _duration = nextController!.value.duration;
+        _position = nextController.value.position;
       });
     } catch (error) {
+      await nextController?.dispose();
       if (!mounted) {
         return;
       }
@@ -285,7 +346,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       setState(() {
         _loading = false;
         _initialized = false;
-        _error = error.toString();
+        _error = _friendlyError(error);
+        _playbackIssue = _describePlaybackIssue(error);
       });
     }
   }
@@ -304,7 +366,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     if (value.hasError) {
       setState(() {
-        _error = value.errorDescription ?? 'Video playback error.';
+        final String raw = value.errorDescription ?? 'Video playback error.';
+        _error = _friendlyError(raw);
+        _playbackIssue = _describePlaybackIssue(raw);
       });
     }
 
@@ -405,16 +469,110 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _seekRelative(int seconds) async {
     final VideoPlayerController? controller = _controller;
-    if (controller == null) {
+    if (controller == null || controller.value.duration <= Duration.zero) {
       return;
     }
 
-    final Duration target = controller.value.position + Duration(seconds: seconds);
+    final Duration target =
+        controller.value.position + Duration(seconds: seconds);
     final Duration clamped = target < Duration.zero
         ? Duration.zero
-        : (target > controller.value.duration ? controller.value.duration : target);
+        : (target > controller.value.duration
+            ? controller.value.duration
+            : target);
     await controller.seekTo(clamped);
   }
+
+  Future<void> _openExternalPlayer() async {
+    final String? url = _resolvedUrl;
+    if (url == null || url.isEmpty) {
+      return;
+    }
+
+    final Uri uri = Uri.parse(url);
+    if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      return;
+    }
+
+    await _copyStreamUrl();
+  }
+
+  Future<void> _copyStreamUrl() async {
+    final String? url = _resolvedUrl;
+    if (url == null || url.isEmpty) {
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: url));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content: Text('Stream URL copied for an external player.')),
+    );
+  }
+
+  Future<void> _retryActiveFile() async {
+    final int? activeFileId = _activeFileId;
+    final String? resolvedUrl = _resolvedUrl;
+    if (activeFileId != null) {
+      await _resolveFile(activeFileId);
+      return;
+    }
+    if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
+      await _openResolvedMedia(resolvedUrl);
+    }
+  }
+
+  String _friendlyError(Object error) {
+    final _PlaybackIssue issue = _describePlaybackIssue(error);
+    return '${issue.title}. ${issue.body}';
+  }
+
+  _PlaybackIssue _describePlaybackIssue(Object error) {
+    final String raw = error.toString();
+    final TorBoxTorrentFile? activeFile = _activeFile;
+    final bool hevcFile =
+        activeFile != null && _looksLikeHevc(activeFile.displayName);
+    final bool codecError = RegExp(
+      r'(MediaCodecVideoRenderer|NO_EXCEEDS_CAPABILITIES|format_supported|video/hevc|hvc1|decoder|ExoPlaybackException)',
+      caseSensitive: false,
+    ).hasMatch(raw);
+
+    if (codecError || hevcFile) {
+      return _PlaybackIssue(
+        title: 'This file is not supported by this device',
+        body:
+            'The selected video looks like HEVC/x265. Many Android phones cannot decode that inside Flutter. Choose an H.264/x264 file if available, or open the TorBox stream in an external player like VLC.',
+        showExternalActions: true,
+        rawDetails: raw,
+      );
+    }
+
+    if (raw.contains('Source error') || raw.contains('HTTP')) {
+      return _PlaybackIssue(
+        title: 'Could not stream this file',
+        body:
+            'The TorBox link may have expired or the file is not ready yet. Try again, refresh the library, or choose another file.',
+        showExternalActions: true,
+        rawDetails: raw,
+      );
+    }
+
+    return _PlaybackIssue(
+      title: 'Playback failed',
+      body:
+          'The player could not start this stream. Try another file or open the stream in an external player.',
+      showExternalActions: true,
+      rawDetails: raw,
+    );
+  }
+
+  TorBoxTorrentFile? get _activeFile =>
+      _files.cast<TorBoxTorrentFile?>().firstWhere(
+            (TorBoxTorrentFile? file) => file?.id == _activeFileId,
+            orElse: () => null,
+          );
 
   void _showFileSelector() {
     showModalBottomSheet<void>(
@@ -429,10 +587,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   (TorBoxTorrentFile file) => ListTile(
                     title: Text(
                       file.displayName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: AppColors.text),
                     ),
                     subtitle: Text(
                       _formatBytes(file.size),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: AppColors.textMuted),
                     ),
                     trailing: file.id == _activeFileId
@@ -468,10 +630,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final double progress = _duration.inMilliseconds > 0
         ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0, 1)
         : 0;
-    final TorBoxTorrentFile? activeFile = _files.cast<TorBoxTorrentFile?>().firstWhere(
-          (TorBoxTorrentFile? file) => file?.id == _activeFileId,
-          orElse: () => null,
-        );
+    final TorBoxTorrentFile? activeFile = _activeFile;
+    final String displayTitle = activeFile?.displayName ?? widget.title;
     final List<SeasonFileGroup> parsedSeasons = parseSeasonPack(_files);
     final List<SeasonFileGroup> seasonGroups = parsedSeasons
         .where((SeasonFileGroup group) => group.season > 0)
@@ -480,12 +640,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         .where((SeasonFileGroup group) => group.isExtras)
         .expand((SeasonFileGroup group) => group.episodes)
         .toList(growable: false);
+    final bool hasStreamUrl = (_resolvedUrl ?? '').isNotEmpty;
+    final bool canControl = _initialized && controller != null;
     final bool movieLikeFiles =
         widget.mediaType == 'movie' || isMovieTorrent(_files);
     final List<int> videoFileIndices = getAllVideoFiles(_files);
     final Set<int> parsedIndices = <int>{
       for (final SeasonFileGroup group in parsedSeasons)
-        for (final ParsedEpisodeFile episode in group.episodes) episode.originalIndex,
+        for (final ParsedEpisodeFile episode in group.episodes)
+          episode.originalIndex,
     };
     final List<int> unparsedVideoIndices = videoFileIndices
         .where((int index) => !parsedIndices.contains(index))
@@ -546,18 +709,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           if (_error != null)
                             Center(
                               child: Padding(
-                                padding: const EdgeInsets.all(20),
-                                child: Text(
-                                  _error!,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: Color(0xFFFCA5A5),
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                padding: const EdgeInsets.all(14),
+                                child: _PlayerErrorPanel(
+                                  issue: _playbackIssue ??
+                                      _PlaybackIssue(
+                                        title: 'Playback failed',
+                                        body: _error!,
+                                        showExternalActions: true,
+                                      ),
+                                  hasFiles: _files.length > 1,
+                                  hasStreamUrl: hasStreamUrl,
+                                  onChooseFile: _showFileSelector,
+                                  onOpenExternal: _openExternalPlayer,
+                                  onCopyLink: _copyStreamUrl,
+                                  onRetry: _retryActiveFile,
                                 ),
                               ),
                             ),
-                          if (_showControls && _initialized && controller != null)
+                          if (_showControls &&
+                              _initialized &&
+                              controller != null)
                             Positioned.fill(
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
@@ -610,10 +781,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      widget.title,
+                      displayTitle,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppColors.text,
-                        fontSize: 22,
+                        fontSize: 21,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -640,8 +813,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           ),
                         if (activeFile != null)
                           _InfoChip(
-                            icon: Icons.folder_open_outlined,
-                            label: activeFile.displayName,
+                            icon: _looksLikeHevc(activeFile.displayName)
+                                ? Icons.warning_amber_rounded
+                                : Icons.folder_open_outlined,
+                            label: _looksLikeHevc(activeFile.displayName)
+                                ? 'HEVC/x265'
+                                : activeFile.displayName,
                           ),
                         if (widget.torrentHash != null &&
                             widget.torrentHash!.isNotEmpty)
@@ -658,13 +835,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                      canControl
+                          ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
+                          : 'Waiting for a playable stream',
                       style: const TextStyle(color: AppColors.textMuted),
                     ),
                     const SizedBox(height: 10),
                     Slider(
                       value: progress,
-                      onChanged: !_initialized || controller == null
+                      onChanged: !canControl
                           ? null
                           : (double value) async {
                               final int millis =
@@ -680,17 +859,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       runSpacing: 10,
                       children: <Widget>[
                         FilledButton.tonal(
-                          onPressed: _togglePlayPause,
+                          onPressed: canControl ? _togglePlayPause : null,
                           child: Text(isPlaying ? 'Pause' : 'Play'),
                         ),
                         FilledButton.tonal(
-                          onPressed: () => _seekRelative(-10),
+                          onPressed:
+                              canControl ? () => _seekRelative(-10) : null,
                           child: const Text('-10s'),
                         ),
                         FilledButton.tonal(
-                          onPressed: () => _seekRelative(10),
+                          onPressed:
+                              canControl ? () => _seekRelative(10) : null,
                           child: const Text('+10s'),
                         ),
+                        if (hasStreamUrl)
+                          FilledButton.tonal(
+                            onPressed: _openExternalPlayer,
+                            child: const Text('External player'),
+                          ),
                         FilledButton.tonal(
                           onPressed: _saving
                               ? null
@@ -750,7 +936,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ),
                   ),
                 ],
-                if (movieLikeFiles || unparsedVideoIndices.isNotEmpty) ...<Widget>[
+                if (movieLikeFiles ||
+                    unparsedVideoIndices.isNotEmpty) ...<Widget>[
                   Text(
                     movieLikeFiles ? 'Video files' : 'Other video files',
                     style: const TextStyle(
@@ -766,7 +953,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       child: _FileTile(
                         file: _files[index],
                         active: _files[index].id == _activeFileId,
-                        onTap: _loading ? null : () => _resolveFile(_files[index].id),
+                        onTap: _loading
+                            ? null
+                            : () => _resolveFile(_files[index].id),
                         subtitle: _formatBytes(_files[index].size),
                       ),
                     ),
@@ -788,13 +977,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       padding: const EdgeInsets.only(bottom: 10),
                       child: _FileTile(
                         file: _files[episode.originalIndex],
-                        active: _files[episode.originalIndex].id == _activeFileId,
+                        active:
+                            _files[episode.originalIndex].id == _activeFileId,
                         onTap: _loading
                             ? null
-                            : () => _resolveFile(_files[episode.originalIndex].id),
+                            : () =>
+                                _resolveFile(_files[episode.originalIndex].id),
                         leadingLabel: '#${episode.episode}',
                         subtitle:
-                            '${episode.title} • ${_formatBytes(_files[episode.originalIndex].size)}',
+                            '${episode.title} - ${_formatBytes(_files[episode.originalIndex].size)}',
                       ),
                     ),
                   ),
@@ -905,10 +1096,12 @@ class _EpisodeGroupCard extends StatelessWidget {
               child: _FileTile(
                 file: files[episode.originalIndex],
                 active: files[episode.originalIndex].id == activeFileId,
-                onTap: onSelectFile == null ? null : () => onSelectFile!(episode),
-                leadingLabel: formatEpisodeLabel(episode.season, episode.episode),
+                onTap:
+                    onSelectFile == null ? null : () => onSelectFile!(episode),
+                leadingLabel:
+                    formatEpisodeLabel(episode.season, episode.episode),
                 subtitle:
-                    '${episode.title} • ${_formatBytesStatic(files[episode.originalIndex].size)}',
+                    '${episode.title} - ${_formatBytesStatic(files[episode.originalIndex].size)}',
               ),
             ),
           ),
@@ -960,10 +1153,14 @@ class _FileTile extends StatelessWidget {
             ),
       title: Text(
         file.displayName,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
         style: const TextStyle(color: AppColors.text),
       ),
       subtitle: Text(
         subtitle,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
         style: const TextStyle(color: AppColors.textMuted),
       ),
       trailing: IconButton(
@@ -1005,26 +1202,165 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icon, color: AppColors.textMuted, size: 16),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.text,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 280),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, color: AppColors.textMuted, size: 16),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlaybackIssue {
+  const _PlaybackIssue({
+    required this.title,
+    required this.body,
+    required this.showExternalActions,
+    this.rawDetails,
+  });
+
+  final String title;
+  final String body;
+  final bool showExternalActions;
+  final String? rawDetails;
+
+  String? get shortDetails {
+    final String details = rawDetails?.trim() ?? '';
+    if (details.isEmpty) {
+      return null;
+    }
+    return details.length > 180 ? '${details.substring(0, 180)}...' : details;
+  }
+}
+
+class _PlayerErrorPanel extends StatelessWidget {
+  const _PlayerErrorPanel({
+    required this.issue,
+    required this.hasFiles,
+    required this.hasStreamUrl,
+    required this.onChooseFile,
+    required this.onOpenExternal,
+    required this.onCopyLink,
+    required this.onRetry,
+  });
+
+  final _PlaybackIssue issue;
+  final bool hasFiles;
+  final bool hasStreamUrl;
+  final VoidCallback onChooseFile;
+  final Future<void> Function() onOpenExternal;
+  final Future<void> Function() onCopyLink;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 520),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF180F10).withOpacity(0.94),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x55F87171)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(
+              Icons.warning_amber_rounded,
+              color: Color(0xFFFCA5A5),
+              size: 28,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              issue.title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              issue.body,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                if (hasFiles)
+                  FilledButton.tonalIcon(
+                    onPressed: onChooseFile,
+                    icon: const Icon(Icons.folder_open_outlined, size: 18),
+                    label: const Text('Choose file'),
+                  ),
+                if (hasStreamUrl && issue.showExternalActions)
+                  FilledButton.tonalIcon(
+                    onPressed: onOpenExternal,
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: const Text('Open external'),
+                  ),
+                if (hasStreamUrl && issue.showExternalActions)
+                  OutlinedButton.icon(
+                    onPressed: onCopyLink,
+                    icon: const Icon(Icons.link_rounded, size: 18),
+                    label: const Text('Copy URL'),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ),
+            if (issue.shortDetails != null) ...<Widget>[
+              const SizedBox(height: 10),
+              Text(
+                issue.shortDetails!,
+                textAlign: TextAlign.center,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF9CA3AF),
+                  fontSize: 10,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

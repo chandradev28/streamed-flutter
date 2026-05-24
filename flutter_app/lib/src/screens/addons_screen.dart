@@ -27,9 +27,8 @@ class _AddonsScreenState extends State<AddonsScreen> {
   bool _installing = false;
   bool _useAddons = false;
 
-  int get _streamAddonCount => _addons
-      .where((AddonManifest addon) => addon.hasStreamResource)
-      .length;
+  int get _streamAddonCount =>
+      _addons.where((AddonManifest addon) => addon.hasStreamResource).length;
 
   @override
   void initState() {
@@ -274,7 +273,8 @@ class _AddonsScreenState extends State<AddonsScreen> {
                     Expanded(
                       child: _OverviewMetric(
                         value: _addons
-                            .where((AddonManifest addon) => addon.configurationRequired)
+                            .where((AddonManifest addon) =>
+                                addon.configurationRequired)
                             .length
                             .toString(),
                         label: 'Need setup',

@@ -1,23 +1,31 @@
 class AppSettings {
   const AppSettings({
     this.torBoxApiKey,
-    this.dnsProvider = DnsProvider.none,
+    this.realDebridApiKey,
+    this.preferredDebridProvider = 'torbox',
     this.useAddons = false,
   });
 
   final String? torBoxApiKey;
-  final DnsProvider dnsProvider;
+  final String? realDebridApiKey;
+  final String preferredDebridProvider;
   final bool useAddons;
 
   AppSettings copyWith({
     String? torBoxApiKey,
+    String? realDebridApiKey,
     bool clearApiKey = false,
-    DnsProvider? dnsProvider,
+    bool clearRealDebridApiKey = false,
+    String? preferredDebridProvider,
     bool? useAddons,
   }) {
     return AppSettings(
       torBoxApiKey: clearApiKey ? null : (torBoxApiKey ?? this.torBoxApiKey),
-      dnsProvider: dnsProvider ?? this.dnsProvider,
+      realDebridApiKey: clearRealDebridApiKey
+          ? null
+          : (realDebridApiKey ?? this.realDebridApiKey),
+      preferredDebridProvider:
+          preferredDebridProvider ?? this.preferredDebridProvider,
       useAddons: useAddons ?? this.useAddons,
     );
   }
@@ -25,7 +33,9 @@ class AppSettings {
   factory AppSettings.fromJson(Map<String, dynamic> json) {
     return AppSettings(
       torBoxApiKey: json['torBoxApiKey'] as String?,
-      dnsProvider: DnsProviderX.fromStorage(json['dnsProvider'] as String?),
+      realDebridApiKey: json['realDebridApiKey'] as String?,
+      preferredDebridProvider:
+          json['preferredDebridProvider'] as String? ?? 'torbox',
       useAddons: json['useAddons'] as bool? ?? false,
     );
   }
@@ -33,56 +43,10 @@ class AppSettings {
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       'torBoxApiKey': torBoxApiKey,
-      'dnsProvider': dnsProvider.storageValue,
+      'realDebridApiKey': realDebridApiKey,
+      'preferredDebridProvider': preferredDebridProvider,
       'useAddons': useAddons,
     };
-  }
-}
-
-enum DnsProvider {
-  none,
-  cloudflare,
-  google,
-  adguard,
-  quad9,
-}
-
-extension DnsProviderX on DnsProvider {
-  String get storageValue {
-    switch (this) {
-      case DnsProvider.none:
-        return 'none';
-      case DnsProvider.cloudflare:
-        return 'cloudflare';
-      case DnsProvider.google:
-        return 'google';
-      case DnsProvider.adguard:
-        return 'adguard';
-      case DnsProvider.quad9:
-        return 'quad9';
-    }
-  }
-
-  String get label {
-    switch (this) {
-      case DnsProvider.none:
-        return 'System DNS';
-      case DnsProvider.cloudflare:
-        return 'Cloudflare';
-      case DnsProvider.google:
-        return 'Google';
-      case DnsProvider.adguard:
-        return 'AdGuard';
-      case DnsProvider.quad9:
-        return 'Quad9';
-    }
-  }
-
-  static DnsProvider fromStorage(String? value) {
-    return DnsProvider.values.firstWhere(
-      (DnsProvider provider) => provider.storageValue == value,
-      orElse: () => DnsProvider.none,
-    );
   }
 }
 
@@ -220,6 +184,117 @@ class TorBoxTorrentFile {
       'size': size,
       'short_name': shortName,
     };
+  }
+}
+
+class RealDebridUser {
+  const RealDebridUser({
+    required this.username,
+    required this.email,
+    required this.type,
+    this.expiration,
+  });
+
+  final String username;
+  final String email;
+  final String type;
+  final String? expiration;
+
+  factory RealDebridUser.fromJson(Map<String, dynamic> json) {
+    return RealDebridUser(
+      username: _readString(json['username']) ?? 'Real-Debrid account',
+      email: _readString(json['email']) ?? '',
+      type: _readString(json['type']) ?? 'Unknown',
+      expiration: _readString(json['expiration']),
+    );
+  }
+}
+
+class RealDebridTorrentFile {
+  const RealDebridTorrentFile({
+    required this.id,
+    required this.path,
+    required this.bytes,
+    this.selected = false,
+  });
+
+  final int id;
+  final String path;
+  final int bytes;
+  final bool selected;
+
+  String get displayName {
+    final List<String> parts = path.split(RegExp(r'[/\\]'));
+    return parts.isEmpty ? path : parts.last;
+  }
+
+  factory RealDebridTorrentFile.fromJson(Map<String, dynamic> json) {
+    return RealDebridTorrentFile(
+      id: _readInt(json['id']) ?? 0,
+      path: _readString(json['path']) ?? 'Unknown file',
+      bytes: _readInt(json['bytes']) ?? 0,
+      selected: _readInt(json['selected']) == 1,
+    );
+  }
+}
+
+class RealDebridTorrentInfo {
+  const RealDebridTorrentInfo({
+    required this.id,
+    required this.filename,
+    required this.hash,
+    required this.bytes,
+    required this.status,
+    required this.files,
+    required this.links,
+  });
+
+  final String id;
+  final String filename;
+  final String hash;
+  final int bytes;
+  final String status;
+  final List<RealDebridTorrentFile> files;
+  final List<String> links;
+
+  factory RealDebridTorrentInfo.fromJson(Map<String, dynamic> json) {
+    return RealDebridTorrentInfo(
+      id: _readString(json['id']) ?? '',
+      filename: _readString(json['filename']) ??
+          _readString(json['original_filename']) ??
+          'Real-Debrid torrent',
+      hash: (_readString(json['hash']) ?? '').toLowerCase(),
+      bytes: _readInt(json['bytes']) ?? _readInt(json['original_bytes']) ?? 0,
+      status: _readString(json['status']) ?? '',
+      files: ((json['files'] as List<dynamic>?) ?? const <dynamic>[])
+          .whereType<Map<String, dynamic>>()
+          .map(RealDebridTorrentFile.fromJson)
+          .toList(growable: false),
+      links: ((json['links'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((dynamic item) => item.toString())
+          .where((String item) => item.trim().isNotEmpty)
+          .toList(growable: false),
+    );
+  }
+}
+
+class RealDebridResolvedLink {
+  const RealDebridResolvedLink({
+    required this.url,
+    this.filename,
+    this.filesize,
+  });
+
+  final String url;
+  final String? filename;
+  final int? filesize;
+
+  factory RealDebridResolvedLink.fromJson(Map<String, dynamic> json) {
+    return RealDebridResolvedLink(
+      url: _readString(json['download']) ?? _readString(json['link']) ?? '',
+      filename: _readString(json['filename']),
+      filesize: _readInt(json['filesize']),
+    );
   }
 }
 
@@ -514,12 +589,16 @@ class StreamSource {
     required this.quality,
     required this.sizeLabel,
     required this.isCached,
+    this.cacheProvider,
     this.addonId,
     this.infoHash,
     this.directUrl,
     this.fileIndex,
     this.fileName,
     this.videoSizeBytes,
+    this.magnetUri,
+    this.sourceTrackers = const <String>[],
+    this.streamHeaders = const <String, String>{},
   });
 
   final String id;
@@ -530,14 +609,23 @@ class StreamSource {
   final String quality;
   final String sizeLabel;
   final bool isCached;
+  final String? cacheProvider;
   final String? addonId;
   final String? infoHash;
   final String? directUrl;
   final int? fileIndex;
   final String? fileName;
   final int? videoSizeBytes;
+  final String? magnetUri;
+  final List<String> sourceTrackers;
+  final Map<String, String> streamHeaders;
 
   bool get isDirectUrl => directUrl != null && directUrl!.isNotEmpty;
+  bool get isTorBoxCached => (cacheProvider ?? '').contains('TB+');
+  bool get isRealDebridCached => (cacheProvider ?? '').contains('RD+');
+  bool get hasTorrentSource =>
+      (infoHash != null && infoHash!.isNotEmpty) ||
+      (magnetUri != null && magnetUri!.isNotEmpty);
 
   factory StreamSource.fromJson(Map<String, dynamic> json) {
     return StreamSource(
@@ -549,12 +637,26 @@ class StreamSource {
       quality: json['quality'] as String? ?? 'Unknown',
       sizeLabel: json['sizeLabel'] as String? ?? '',
       isCached: json['isCached'] as bool? ?? false,
+      cacheProvider: json['cacheProvider'] as String?,
       addonId: json['addonId'] as String?,
       infoHash: json['infoHash'] as String?,
       directUrl: json['directUrl'] as String?,
       fileIndex: (json['fileIndex'] as num?)?.toInt(),
       fileName: json['fileName'] as String?,
       videoSizeBytes: (json['videoSizeBytes'] as num?)?.toInt(),
+      magnetUri: json['magnetUri'] as String?,
+      sourceTrackers:
+          ((json['sourceTrackers'] as List<dynamic>?) ?? const <dynamic>[])
+              .map((dynamic item) => item.toString())
+              .toList(growable: false),
+      streamHeaders: ((json['streamHeaders'] as Map<String, dynamic>?) ??
+              const <String, dynamic>{})
+          .map(
+        (String key, dynamic value) => MapEntry<String, String>(
+          key,
+          value.toString(),
+        ),
+      ),
     );
   }
 
@@ -568,14 +670,30 @@ class StreamSource {
       'quality': quality,
       'sizeLabel': sizeLabel,
       'isCached': isCached,
+      'cacheProvider': cacheProvider,
       'addonId': addonId,
       'infoHash': infoHash,
       'directUrl': directUrl,
       'fileIndex': fileIndex,
       'fileName': fileName,
       'videoSizeBytes': videoSizeBytes,
+      'magnetUri': magnetUri,
+      'sourceTrackers': sourceTrackers,
+      'streamHeaders': streamHeaders,
     };
   }
+}
+
+int? _readInt(dynamic value) {
+  if (value is num) {
+    return value.toInt();
+  }
+  return int.tryParse(value?.toString() ?? '');
+}
+
+String? _readString(dynamic value) {
+  final String text = value?.toString().trim() ?? '';
+  return text.isEmpty ? null : text;
 }
 
 class IndexerHealth {

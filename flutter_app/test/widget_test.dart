@@ -7,7 +7,8 @@ import 'package:flutter_app/src/screens/home_screen.dart';
 import 'test_fakes.dart';
 
 void main() {
-  testWidgets('shows migrated home shell by default', (WidgetTester tester) async {
+  testWidgets('shows migrated home shell by default',
+      (WidgetTester tester) async {
     await tester.pumpWidget(
       StreamedApp(
         home: HomeScreen(
@@ -19,7 +20,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
-    expect(find.byKey(const ValueKey<String>('home-menu-button')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey<String>('home-menu-button')), findsOneWidget);
     expect(find.text('Streamed'), findsOneWidget);
     expect(find.text('Top trending movies'), findsOneWidget);
 

@@ -217,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Navigator.of(this.context).push<void>(
                               MaterialPageRoute<void>(
                                 builder: (BuildContext context) =>
-                                    const IndexerStatusScreen(),
+                                    IndexerStatusScreen(),
                               ),
                             );
                           },
@@ -283,73 +283,78 @@ class _HomeScreenState extends State<HomeScreen> {
           onRefresh: _loadHome,
           color: AppColors.text,
           backgroundColor: AppColors.surface,
-          child: _loading
-              ? const Center(
-                  child: CircularProgressIndicator(color: AppColors.text),
-                )
-              : CustomScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: <Widget>[
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Row(
-                              children: <Widget>[
-                                _SquareHeaderButton(
-                                  key: const ValueKey<String>(
-                                      'home-menu-button'),
-                                  icon: Icons.menu_rounded,
-                                  onTap: _showMainMenu,
-                                ),
-                                const Expanded(
-                                  child: Padding(
-                                    padding: EdgeInsets.only(left: 14),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: <Widget>[
-                                        Text(
-                                          'Streamed',
-                                          style: TextStyle(
-                                            color: AppColors.text,
-                                            fontSize: 28,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        SizedBox(height: 2),
-                                        Text(
-                                          'Movies, shows, and TorBox tools',
-                                          style: TextStyle(
-                                            color: AppColors.textMuted,
-                                            fontSize: 12,
-                                            height: 1.35,
-                                          ),
-                                        ),
-                                      ],
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: <Widget>[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          _SquareHeaderButton(
+                            key: const ValueKey<String>('home-menu-button'),
+                            icon: Icons.menu_rounded,
+                            onTap: _showMainMenu,
+                          ),
+                          const Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(left: 14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Text(
+                                    'Streamed',
+                                    style: TextStyle(
+                                      color: AppColors.text,
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                _SquareHeaderButton(
-                                  key: const ValueKey<String>(
-                                    'home-profile-button',
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Movies, shows, and TorBox tools',
+                                    style: TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 12,
+                                      height: 1.35,
+                                    ),
                                   ),
-                                  icon: Icons.person_outline_rounded,
-                                  onTap: _openProfile,
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 12),
+                          _SquareHeaderButton(
+                            key: const ValueKey<String>(
+                              'home-profile-button',
+                            ),
+                            icon: Icons.person_outline_rounded,
+                            onTap: _openProfile,
+                          ),
+                        ],
                       ),
-                    ),
-                    const _SectionHeader(title: 'Top trending movies'),
-                    SliverToBoxAdapter(
-                      child: SizedBox(
+                      if (_loading) ...<Widget>[
+                        const SizedBox(height: 14),
+                        const _TorBoxSetupPrompt(),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const _SectionHeader(title: 'Top trending movies'),
+              SliverToBoxAdapter(
+                child: _loading && _trending.isEmpty
+                    ? const _PosterSkeletonRow(
+                        height: 282,
+                        itemWidth: 160,
+                        itemHeight: 240,
+                        count: 4,
+                      )
+                    : SizedBox(
                         height: 282,
                         child: ListView.separated(
                           padding: const EdgeInsets.fromLTRB(24, 0, 8, 0),
@@ -369,42 +374,47 @@ class _HomeScreenState extends State<HomeScreen> {
                           },
                         ),
                       ),
-                    ),
-                    if (_continueWatching.isNotEmpty) ...<Widget>[
-                      const _SectionHeader(title: 'Continue Watching'),
-                      SliverToBoxAdapter(
-                        child: SizedBox(
-                          height: 170,
-                          child: ListView.separated(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            scrollDirection: Axis.horizontal,
-                            itemCount: _continueWatching.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(width: 12),
-                            itemBuilder: (BuildContext context, int index) {
-                              final WatchHistoryItem item =
-                                  _continueWatching[index];
-                              if (index == 0) {
-                                return _FeaturedContinueCard(
-                                  item: item,
-                                  onOpen: () => _openContinueWatching(item),
-                                  onRemove: () => _removeHistory(item.id),
-                                );
-                              }
+              ),
+              if (_continueWatching.isNotEmpty) ...<Widget>[
+                const _SectionHeader(title: 'Continue Watching'),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 170,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _continueWatching.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      itemBuilder: (BuildContext context, int index) {
+                        final WatchHistoryItem item = _continueWatching[index];
+                        if (index == 0) {
+                          return _FeaturedContinueCard(
+                            item: item,
+                            onOpen: () => _openContinueWatching(item),
+                            onRemove: () => _removeHistory(item.id),
+                          );
+                        }
 
-                              return _MiniContinueCard(
-                                item: item,
-                                onOpen: () => _openContinueWatching(item),
-                                onRemove: () => _removeHistory(item.id),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                    const _SectionHeader(title: 'New Releases'),
-                    SliverToBoxAdapter(
-                      child: SizedBox(
+                        return _MiniContinueCard(
+                          item: item,
+                          onOpen: () => _openContinueWatching(item),
+                          onRemove: () => _removeHistory(item.id),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+              const _SectionHeader(title: 'New Releases'),
+              SliverToBoxAdapter(
+                child: _loading && _newReleases.isEmpty
+                    ? const _PosterSkeletonRow(
+                        height: 235,
+                        itemWidth: 155,
+                        itemHeight: 185,
+                        count: 4,
+                      )
+                    : SizedBox(
                         height: 235,
                         child: ListView.separated(
                           padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
@@ -421,10 +431,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           },
                         ),
                       ),
-                    ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 132)),
-                  ],
-                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 132)),
+            ],
+          ),
         ),
       ),
     );
@@ -505,6 +515,143 @@ class _MenuActionTile extends StatelessWidget {
       trailing: const Icon(
         Icons.chevron_right_rounded,
         color: AppColors.textMuted,
+      ),
+    );
+  }
+}
+
+class _TorBoxSetupPrompt extends StatelessWidget {
+  const _TorBoxSetupPrompt();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.key_rounded,
+              color: AppColors.text,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Set up TorBox anytime',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Use the profile button while movies load.',
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(
+            Icons.arrow_upward_rounded,
+            color: AppColors.textMuted,
+            size: 18,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PosterSkeletonRow extends StatelessWidget {
+  const _PosterSkeletonRow({
+    required this.height,
+    required this.itemWidth,
+    required this.itemHeight,
+    required this.count,
+  });
+
+  final double height;
+  final double itemWidth;
+  final double itemHeight;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: height,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+        scrollDirection: Axis.horizontal,
+        itemCount: count,
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
+        itemBuilder: (BuildContext context, int index) {
+          return SizedBox(
+            width: itemWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                _SkeletonBlock(
+                  height: itemHeight,
+                  borderRadius: 16,
+                ),
+                const SizedBox(height: 10),
+                const _SkeletonBlock(
+                  height: 12,
+                  borderRadius: 999,
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SkeletonBlock extends StatelessWidget {
+  const _SkeletonBlock({
+    required this.height,
+    required this.borderRadius,
+  });
+
+  final double height;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(borderRadius),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            Colors.white.withOpacity(0.05),
+            Colors.white.withOpacity(0.10),
+            Colors.white.withOpacity(0.04),
+          ],
+        ),
       ),
     );
   }

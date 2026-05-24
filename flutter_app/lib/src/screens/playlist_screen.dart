@@ -358,7 +358,8 @@ class _ProviderChip extends StatelessWidget {
                 child: Image.asset(
                   provider.assetPath,
                   fit: BoxFit.contain,
-                  errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+                  errorBuilder: (BuildContext context, Object error,
+                      StackTrace? stackTrace) {
                     return Container(
                       color: provider.color,
                       alignment: Alignment.center,

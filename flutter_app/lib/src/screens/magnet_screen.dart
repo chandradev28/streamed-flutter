@@ -45,12 +45,15 @@ class _MagnetScreenState extends State<MagnetScreen> {
     });
 
     final Set<String> hashes = await widget.historyRepository.getHashes();
-    final List<TorBoxTorrent> allTorrents = await widget.torBoxApiService.getUserTorrents();
+    final List<TorBoxTorrent> allTorrents =
+        await widget.torBoxApiService.getUserTorrents();
     final List<TorBoxTorrent> torrents = allTorrents
-        .where((TorBoxTorrent torrent) => hashes.contains(torrent.hash.toLowerCase()))
+        .where((TorBoxTorrent torrent) =>
+            hashes.contains(torrent.hash.toLowerCase()))
         .toList(growable: false);
 
-    torrents.sort((TorBoxTorrent a, TorBoxTorrent b) => b.progress.compareTo(a.progress));
+    torrents.sort(
+        (TorBoxTorrent a, TorBoxTorrent b) => b.progress.compareTo(a.progress));
 
     if (!mounted) {
       return;
@@ -79,7 +82,8 @@ class _MagnetScreenState extends State<MagnetScreen> {
     final List<String> addedHashes = <String>[];
     int successCount = 0;
     for (final String input in inputs) {
-      final TorBoxTorrent? torrent = await widget.torBoxApiService.addTorrent(input);
+      final TorBoxTorrent? torrent =
+          await widget.torBoxApiService.addTorrent(input);
       if (torrent != null) {
         successCount += 1;
         addedHashes.add(torrent.hash);
@@ -167,7 +171,8 @@ class _MagnetScreenState extends State<MagnetScreen> {
                     const SizedBox(height: 10),
                     const Text(
                       'Paste one magnet or info hash per line. Torrent file upload is still pending in the Flutter port.',
-                      style: TextStyle(color: AppColors.textMuted, height: 1.45),
+                      style:
+                          TextStyle(color: AppColors.textMuted, height: 1.45),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -283,11 +288,13 @@ class _TorrentCard extends StatelessWidget {
               ),
               IconButton(
                 onPressed: onRemove,
-                icon: const Icon(Icons.remove_circle_outline, color: AppColors.textSubtle),
+                icon: const Icon(Icons.remove_circle_outline,
+                    color: AppColors.textSubtle),
               ),
               IconButton(
                 onPressed: onDelete,
-                icon: const Icon(Icons.delete_outline, color: Color(0xFFFCA5A5)),
+                icon:
+                    const Icon(Icons.delete_outline, color: Color(0xFFFCA5A5)),
               ),
             ],
           ),
@@ -299,7 +306,11 @@ class _TorrentCard extends StatelessWidget {
               _TorrentChip(label: _formatBytes(torrent.size)),
               _TorrentChip(label: '${torrent.progress.round()}%'),
               _TorrentChip(
-                label: isReady ? 'Cached' : (torrent.downloadState.isEmpty ? 'Queued' : torrent.downloadState),
+                label: isReady
+                    ? 'Cached'
+                    : (torrent.downloadState.isEmpty
+                        ? 'Queued'
+                        : torrent.downloadState),
                 color: statusColor,
               ),
             ],

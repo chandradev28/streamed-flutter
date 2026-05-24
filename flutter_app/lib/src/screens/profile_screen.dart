@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../models/torbox_models.dart';
 import '../services/app_settings_repository.dart';
+import '../services/real_debrid_api_service.dart';
 import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
-import 'addons_screen.dart';
-import 'indexer_status_screen.dart';
 import 'magnet_screen.dart';
 import 'video_player_screen.dart';
 
@@ -13,11 +12,14 @@ class ProfileScreen extends StatefulWidget {
   ProfileScreen({
     super.key,
     TorBoxApiService? torBoxApiService,
+    RealDebridApiService? realDebridApiService,
     AppSettingsRepository? settingsRepository,
   })  : torBoxApiService = torBoxApiService ?? TorBoxApiService(),
+        realDebridApiService = realDebridApiService ?? RealDebridApiService(),
         settingsRepository = settingsRepository ?? AppSettingsRepository();
 
   final TorBoxApiService torBoxApiService;
+  final RealDebridApiService realDebridApiService;
   final AppSettingsRepository settingsRepository;
 
   @override
@@ -26,13 +28,17 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final TextEditingController _apiKeyController = TextEditingController();
+  final TextEditingController _realDebridKeyController =
+      TextEditingController();
   AppSettings _settings = const AppSettings();
   TorBoxUser? _user;
+  RealDebridUser? _realDebridUser;
   List<TorBoxTorrent> _torrents = const <TorBoxTorrent>[];
   Set<int> _expanded = <int>{};
   bool _loading = true;
   bool _saving = false;
   String? _torBoxStatus;
+  String? _realDebridStatus;
   bool _keyConfigured = false;
 
   @override
@@ -44,6 +50,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _apiKeyController.dispose();
+    _realDebridKeyController.dispose();
     super.dispose();
   }
 
@@ -55,8 +62,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final AppSettings settings = await widget.settingsRepository.loadSettings();
     _apiKeyController.text = settings.torBoxApiKey ?? '';
+    _realDebridKeyController.text = settings.realDebridApiKey ?? '';
     final bool hasKey = settings.torBoxApiKey != null &&
         settings.torBoxApiKey!.trim().isNotEmpty;
+    final bool hasRealDebridKey = settings.realDebridApiKey != null &&
+        settings.realDebridApiKey!.trim().isNotEmpty;
+    RealDebridUser? realDebridUser;
+    String? realDebridStatus;
+    if (hasRealDebridKey) {
+      try {
+        realDebridUser = await widget.realDebridApiService.getUserInfo();
+      } on RealDebridApiException catch (error) {
+        realDebridStatus = error.detail;
+      } catch (_) {
+        realDebridStatus = 'Could not load your Real-Debrid account.';
+      }
+    }
 
     if (!hasKey) {
       if (!mounted) {
@@ -65,8 +86,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _settings = settings;
         _user = null;
+        _realDebridUser = realDebridUser;
         _torrents = const <TorBoxTorrent>[];
         _keyConfigured = false;
+        _realDebridStatus = realDebridStatus;
         _loading = false;
       });
       return;
@@ -81,8 +104,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _settings = settings;
         _user = snapshot.user;
+        _realDebridUser = realDebridUser;
         _torrents = snapshot.torrents;
         _keyConfigured = true;
+        _realDebridStatus = realDebridStatus;
         _loading = false;
       });
     } on TorBoxApiException catch (error) {
@@ -92,9 +117,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _settings = settings;
         _user = null;
+        _realDebridUser = realDebridUser;
         _torrents = const <TorBoxTorrent>[];
         _keyConfigured = true;
         _torBoxStatus = error.detail;
+        _realDebridStatus = realDebridStatus;
         _loading = false;
       });
     } catch (_) {
@@ -104,9 +131,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _settings = settings;
         _user = null;
+        _realDebridUser = realDebridUser;
         _torrents = const <TorBoxTorrent>[];
         _keyConfigured = true;
         _torBoxStatus = 'Could not load your TorBox account right now.';
+        _realDebridStatus = realDebridStatus;
         _loading = false;
       });
     }
@@ -180,13 +209,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await _load();
   }
 
-  Future<void> _setDnsProvider(DnsProvider provider) async {
-    await widget.settingsRepository.saveDnsProvider(provider);
+  Future<void> _saveRealDebridApiKey() async {
+    final String apiKey = _realDebridKeyController.text.trim();
+    if (apiKey.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _realDebridStatus = null;
+    });
+
+    try {
+      final RealDebridUser user =
+          await widget.realDebridApiService.connect(apiKey);
+      final AppSettings settings =
+          await widget.settingsRepository.loadSettings();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _settings = settings;
+        _realDebridUser = user;
+        _saving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Real-Debrid token saved.')),
+      );
+    } on RealDebridApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _saving = false;
+        _realDebridStatus = error.detail;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.detail)),
+      );
+    }
+  }
+
+  Future<void> _removeRealDebridApiKey() async {
+    await widget.settingsRepository.clearRealDebridApiKey();
+    await _load();
+  }
+
+  Future<void> _setPreferredDebrid(String provider) async {
+    await widget.settingsRepository.savePreferredDebridProvider(provider);
+    final AppSettings settings = await widget.settingsRepository.loadSettings();
     if (!mounted) {
       return;
     }
     setState(() {
-      _settings = _settings.copyWith(dnsProvider: provider);
+      _settings = settings;
     });
   }
 
@@ -218,22 +294,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _expanded = <int>{..._expanded, torrentId};
       }
     });
-  }
-
-  void _openAddons() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => AddonsScreen(),
-      ),
-    );
-  }
-
-  void _openIndexers() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => const IndexerStatusScreen(),
-      ),
-    );
   }
 
   void _openMagnet() {
@@ -338,26 +398,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 18),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: _QuickLinkCard(
-                      title: 'Addons',
-                      icon: Icons.extension_outlined,
-                      onTap: _openAddons,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _QuickLinkCard(
-                      title: 'Sources',
-                      icon: Icons.travel_explore_outlined,
-                      onTap: _openIndexers,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
@@ -368,32 +408,113 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     const Text(
-                      'DNS / ISP bypass',
+                      'Real-Debrid integration',
                       style: TextStyle(
                         color: AppColors.text,
-                        fontSize: 16,
+                        fontSize: 18,
                         fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Optional RD resolver for cached streams. Sources marked RD+ can resolve directly through Real-Debrid.',
+                      style:
+                          TextStyle(color: AppColors.textMuted, height: 1.45),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _realDebridKeyController,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      textCapitalization: TextCapitalization.none,
+                      style: const TextStyle(color: AppColors.text),
+                      decoration: InputDecoration(
+                        hintText: 'Real-Debrid API token',
+                        hintStyle: const TextStyle(color: AppColors.textSubtle),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.04),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: DnsProvider.values.map((DnsProvider provider) {
-                        final bool selected = _settings.dnsProvider == provider;
-                        return ChoiceChip(
-                          selected: selected,
-                          label: Text(provider.label),
-                          onSelected: (_) => _setDnsProvider(provider),
-                          selectedColor: Colors.white,
-                          labelStyle: TextStyle(
-                            color: selected
-                                ? AppColors.background
-                                : AppColors.text,
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: <Widget>[
+                        FilledButton(
+                          onPressed: _saving ? null : _saveRealDebridApiKey,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.text,
+                            foregroundColor: AppColors.background,
                           ),
-                        );
-                      }).toList(growable: false),
+                          child: Text(_saving ? 'Saving...' : 'Save RD token'),
+                        ),
+                        FilledButton.tonal(
+                          onPressed: _settings.realDebridApiKey == null
+                              ? null
+                              : _removeRealDebridApiKey,
+                          child: const Text('Remove RD'),
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Preferred resolver',
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: <Widget>[
+                        ChoiceChip(
+                          label: const Text('TorBox first'),
+                          selected:
+                              _settings.preferredDebridProvider == 'torbox',
+                          onSelected: (_) => _setPreferredDebrid('torbox'),
+                        ),
+                        ChoiceChip(
+                          label: const Text('Real-Debrid first'),
+                          selected:
+                              _settings.preferredDebridProvider == 'realdebrid',
+                          onSelected: (_) => _setPreferredDebrid('realdebrid'),
+                        ),
+                      ],
+                    ),
+                    if (_realDebridUser != null) ...<Widget>[
+                      const SizedBox(height: 12),
+                      _AccountRow(
+                        label: 'Account',
+                        value: _realDebridUser!.username,
+                      ),
+                      if (_realDebridUser!.email.isNotEmpty)
+                        _AccountRow(
+                          label: 'Email',
+                          value: _realDebridUser!.email,
+                        ),
+                      _AccountRow(
+                        label: 'Plan',
+                        value: _realDebridUser!.type,
+                      ),
+                      if ((_realDebridUser!.expiration ?? '').isNotEmpty)
+                        _AccountRow(
+                          label: 'Expires',
+                          value: _realDebridUser!.expiration!,
+                        ),
+                    ],
+                    if (_realDebridStatus != null) ...<Widget>[
+                      const SizedBox(height: 12),
+                      _TorBoxStatusBanner(
+                        message: _realDebridStatus!,
+                        error: _realDebridUser == null,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -607,47 +728,6 @@ class _TorBoxStatusBanner extends StatelessWidget {
           color: foreground,
           height: 1.4,
           fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickLinkCard extends StatelessWidget {
-  const _QuickLinkCard({
-    required this.title,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String title;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Icon(icon, color: AppColors.text, size: 24),
-            const SizedBox(height: 14),
-            Text(
-              title,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
         ),
       ),
     );

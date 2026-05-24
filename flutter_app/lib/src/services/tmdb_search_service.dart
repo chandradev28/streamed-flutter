@@ -26,7 +26,8 @@ class TmdbSearchService implements SearchService {
       },
     );
 
-    final HttpClient client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
 
     try {
       final HttpClientRequest request = await client.getUrl(uri);

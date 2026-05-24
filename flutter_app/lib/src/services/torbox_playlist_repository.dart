@@ -25,7 +25,8 @@ class TorboxPlaylistRepository {
       final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
       return decoded
           .map(
-            (dynamic item) => StreamSource.fromJson(item as Map<String, dynamic>),
+            (dynamic item) =>
+                StreamSource.fromJson(item as Map<String, dynamic>),
           )
           .toList(growable: false);
     } catch (_) {
@@ -35,7 +36,8 @@ class TorboxPlaylistRepository {
 
   Future<void> addItem(StreamSource item) async {
     final List<StreamSource> items = await getItems();
-    final bool exists = items.any((StreamSource current) => current.id == item.id);
+    final bool exists =
+        items.any((StreamSource current) => current.id == item.id);
     if (exists) {
       return;
     }

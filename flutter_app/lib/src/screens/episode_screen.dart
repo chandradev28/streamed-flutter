@@ -78,8 +78,8 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
     });
 
     try {
-      final List<EpisodeItem> items =
-          await widget.mediaService.getSeasonEpisodes(widget.tvId, seasonNumber);
+      final List<EpisodeItem> items = await widget.mediaService
+          .getSeasonEpisodes(widget.tvId, seasonNumber);
       if (!mounted) {
         return;
       }
@@ -209,7 +209,9 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
                                   ),
                                 )
                               : Image.network(
-                                  getImageUrl(widget.posterPath ?? show.posterPath, 'w342'),
+                                  getImageUrl(
+                                      widget.posterPath ?? show.posterPath,
+                                      'w342'),
                                   fit: BoxFit.cover,
                                   errorBuilder: (
                                     BuildContext context,
@@ -351,7 +353,8 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
                             children: seasons
                                 .map(
                                   (SeasonSummary season) => InkWell(
-                                    onTap: () => _loadSeason(season.seasonNumber),
+                                    onTap: () =>
+                                        _loadSeason(season.seasonNumber),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 20,
@@ -364,7 +367,8 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
                                             : Colors.transparent,
                                         border: Border(
                                           bottom: BorderSide(
-                                            color: Colors.white.withOpacity(0.05),
+                                            color:
+                                                Colors.white.withOpacity(0.05),
                                           ),
                                         ),
                                       ),

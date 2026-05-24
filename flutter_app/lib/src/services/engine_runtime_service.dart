@@ -9,6 +9,8 @@ import '../models/torbox_models.dart';
 import 'engine_catalog_service.dart';
 import 'engine_storage_service.dart';
 import 'engine_yaml_parser.dart';
+import 'real_debrid_api_service.dart';
+import 'torbox_api_service.dart';
 
 typedef EngineRequestExecutor = Future<String> Function(EngineRequestSpec spec);
 
@@ -18,10 +20,14 @@ class EngineRuntimeService {
     EngineStorageService? storageService,
     EngineYamlParser? yamlParser,
     EngineRequestExecutor? requestExecutor,
+    TorBoxApiService? torBoxApiService,
+    RealDebridApiService? realDebridApiService,
   })  : _catalogService = catalogService ?? EngineCatalogService(),
         _storageService = storageService ?? EngineStorageService(),
         _yamlParser = yamlParser ?? const EngineYamlParser(),
-        _requestExecutor = requestExecutor;
+        _requestExecutor = requestExecutor,
+        _torBoxApiService = torBoxApiService ?? TorBoxApiService(),
+        _realDebridApiService = realDebridApiService ?? RealDebridApiService();
 
   static const Set<String> _recommendedIds = <String>{
     'torrents_csv',
@@ -37,6 +43,8 @@ class EngineRuntimeService {
   final EngineStorageService _storageService;
   final EngineYamlParser _yamlParser;
   final EngineRequestExecutor? _requestExecutor;
+  final TorBoxApiService _torBoxApiService;
+  final RealDebridApiService _realDebridApiService;
 
   Future<List<RemoteEngineInfo>> getCatalog({bool forceRefresh = false}) {
     return _catalogService.fetchCatalog(forceRefresh: forceRefresh);
@@ -190,6 +198,123 @@ class EngineRuntimeService {
         sourceCounts: counts,
         sourceErrors: errors,
       ),
+    );
+  }
+
+  Future<KeywordEngineSearchResult> searchCachedKeyword(String query) async {
+    await ensureRecommendedEnginesAvailable();
+    final KeywordEngineSearchResult raw = await searchKeyword(query);
+    final List<String> hashes = raw.streams
+        .map((StreamSource source) => source.infoHash)
+        .whereType<String>()
+        .where((String hash) => RegExp(r'^[a-f0-9]{40}$').hasMatch(hash))
+        .toSet()
+        .toList(growable: false);
+    if (hashes.isEmpty) {
+      return KeywordEngineSearchResult(
+        streams: const <StreamSource>[],
+        diagnostics: SourceSearchDiagnostics(
+          sourceCounts: raw.diagnostics.sourceCounts,
+          sourceErrors: <String, String>{
+            ...raw.diagnostics.sourceErrors,
+            if (raw.streams.isNotEmpty)
+              'TorBox cache': 'No valid torrent hashes were found to check.',
+          },
+        ),
+      );
+    }
+
+    final Map<String, bool> torBoxCached =
+        await _checkTorBoxCachedSafely(hashes);
+    final Map<String, bool> realDebridCached =
+        await _checkRealDebridCachedSafely(hashes);
+    final List<StreamSource> cachedStreams = raw.streams
+        .map(
+          (StreamSource source) => _markCachedProviders(
+            source,
+            torBoxCached[source.infoHash] == true,
+            realDebridCached[source.infoHash] == true,
+          ),
+        )
+        .where((StreamSource source) => source.isCached)
+        .toList(growable: false);
+    return KeywordEngineSearchResult(
+      streams: cachedStreams,
+      diagnostics: SourceSearchDiagnostics(
+        sourceCounts: <String, int>{
+          ...raw.diagnostics.sourceCounts,
+          'Cached engines': cachedStreams.length,
+        },
+        sourceErrors: raw.diagnostics.sourceErrors,
+      ),
+    );
+  }
+
+  Future<void> ensureRecommendedEnginesAvailable() async {
+    final List<ImportedEngine> imported = await getImportedEngines();
+    final bool hasEnabledKeywordEngine = imported.any(
+      (ImportedEngine engine) =>
+          engine.enabled && engine.keywordSearch && engine.supportedInApp,
+    );
+    if (hasEnabledKeywordEngine) {
+      return;
+    }
+
+    await importRecommendedEngines();
+  }
+
+  Future<Map<String, bool>> _checkTorBoxCachedSafely(
+      List<String> hashes) async {
+    try {
+      if (!await _torBoxApiService.isConfigured()) {
+        return const <String, bool>{};
+      }
+      return _torBoxApiService.checkCached(hashes);
+    } catch (_) {
+      return const <String, bool>{};
+    }
+  }
+
+  Future<Map<String, bool>> _checkRealDebridCachedSafely(
+      List<String> hashes) async {
+    try {
+      if (!await _realDebridApiService.isConfigured()) {
+        return const <String, bool>{};
+      }
+      return _realDebridApiService.checkCached(hashes);
+    } catch (_) {
+      return const <String, bool>{};
+    }
+  }
+
+  StreamSource _markCachedProviders(
+    StreamSource source,
+    bool torBoxCached,
+    bool realDebridCached,
+  ) {
+    final List<String> labels = <String>[
+      if (torBoxCached) 'TB+',
+      if (realDebridCached) 'RD+',
+    ];
+    return StreamSource(
+      id: source.id,
+      provider: source.provider,
+      sourceDisplayName: source.sourceDisplayName,
+      title: source.title,
+      description: source.description,
+      quality: source.quality,
+      sizeLabel: source.sizeLabel,
+      isCached: labels.isNotEmpty,
+      cacheProvider: labels.isEmpty ? source.cacheProvider : labels.join(' / '),
+      addonId: source.addonId,
+      infoHash: source.infoHash,
+      directUrl: source.directUrl,
+      fileIndex: source.fileIndex,
+      fileName: source.fileName,
+      videoSizeBytes: source.videoSizeBytes,
+      magnetUri: source.magnetUri,
+      sourceTrackers: source.sourceTrackers,
+      streamHeaders: source.streamHeaders,
     );
   }
 
@@ -687,6 +812,7 @@ class EngineRuntimeService {
       isCached: false,
       infoHash: infoHash.isEmpty ? null : infoHash,
       videoSizeBytes: sizeBytes > 0 ? sizeBytes : null,
+      magnetUri: infoHash.isEmpty ? null : 'magnet:?xt=urn:btih:$infoHash',
     );
   }
 

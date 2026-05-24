@@ -20,7 +20,8 @@ class WatchHistoryRepository implements ContinueWatchingRepository {
   Future<List<WatchHistoryItem>> getContinueWatching([int limit = 20]) async {
     final List<WatchHistoryItem> history = await _readHistory();
     return history
-        .where((WatchHistoryItem item) => item.progress < 95 && item.currentTime > 0)
+        .where((WatchHistoryItem item) =>
+            item.progress < 95 && item.currentTime > 0)
         .take(limit)
         .toList(growable: false);
   }
