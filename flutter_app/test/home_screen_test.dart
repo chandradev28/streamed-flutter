@@ -15,6 +15,7 @@ void main() {
       MaterialApp(
         home: HomeScreen(
           mediaService: const FakeMediaService(),
+          settingsRepository: FakeAppSettingsRepository(),
           watchHistoryRepository: const FakeWatchHistoryRepository(
             items: <WatchHistoryItem>[
               WatchHistoryItem(
@@ -92,6 +93,7 @@ void main() {
       MaterialApp(
         home: HomeScreen(
           mediaService: const _NowPlayingFailureMediaService(),
+          settingsRepository: FakeAppSettingsRepository(),
           watchHistoryRepository: const FakeWatchHistoryRepository(),
         ),
       ),

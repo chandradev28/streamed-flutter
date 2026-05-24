@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../models/torbox_models.dart';
+import '../services/app_settings_repository.dart';
 import '../theme/app_colors.dart';
+import '../theme/layout_options.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
 import 'playlist_screen.dart';
@@ -15,47 +18,72 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _currentIndex = 0;
+  AppSettings _settings = const AppSettings();
+  final AppSettingsRepository _settingsRepository = AppSettingsRepository();
 
-  static final List<_ShellTab> _tabs = <_ShellTab>[
-    _ShellTab(
-      label: 'Home',
-      icon: Icons.home_outlined,
-      activeIcon: Icons.home,
-      builder: (_) => HomeScreen(),
-    ),
-    _ShellTab(
-      label: 'Playlist',
-      icon: Icons.movie_outlined,
-      activeIcon: Icons.movie,
-      builder: (_) => const PlaylistScreen(),
-    ),
-    _ShellTab(
-      label: 'Search',
-      icon: Icons.search_outlined,
-      activeIcon: Icons.search,
-      builder: (_) => const SearchScreen(),
-    ),
-    _ShellTab(
-      label: 'Library',
-      icon: Icons.favorite_border,
-      activeIcon: Icons.favorite,
-      builder: (_) => LibraryScreen(),
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final AppSettings settings = await _settingsRepository.loadSettings();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _settings = settings;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final Color accent = LayoutOptions.accentFor(_settings);
+    final List<_ShellTab> tabs = <_ShellTab>[
+      _ShellTab(
+        label: 'Home',
+        icon: Icons.home_outlined,
+        activeIcon: Icons.home,
+        builder: (_) => HomeScreen(
+          settingsRepository: _settingsRepository,
+          onSettingsChanged: _loadSettings,
+        ),
+      ),
+      _ShellTab(
+        label: 'Playlist',
+        icon: Icons.movie_outlined,
+        activeIcon: Icons.movie,
+        builder: (_) => const PlaylistScreen(),
+      ),
+      _ShellTab(
+        label: 'Search',
+        icon: Icons.search_outlined,
+        activeIcon: Icons.search,
+        builder: (_) => const SearchScreen(),
+      ),
+      _ShellTab(
+        label: 'Library',
+        icon: Icons.favorite_border,
+        activeIcon: Icons.favorite,
+        builder: (_) => LibraryScreen(),
+      ),
+    ];
+
     return Scaffold(
       extendBody: true,
-      backgroundColor: AppColors.background,
-      body: _tabs[_currentIndex].builder(context),
+      backgroundColor: LayoutOptions.backgroundFor(_settings),
+      body: tabs[_currentIndex].builder(context),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(18, 0, 18, 16),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: const Color(0xFF1B1B21),
+            color: Color.alphaBlend(
+              accent.withOpacity(0.08),
+              const Color(0xFF1B1B21),
+            ),
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: accent.withOpacity(0.14)),
             boxShadow: const <BoxShadow>[
               BoxShadow(
                 color: Color(0x3A000000),
@@ -67,18 +95,20 @@ class _HomeShellState extends State<HomeShell> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(
-              children: List<Widget>.generate(_tabs.length, (int index) {
-                final _ShellTab tab = _tabs[index];
+              children: List<Widget>.generate(tabs.length, (int index) {
+                final _ShellTab tab = tabs[index];
                 final bool selected = index == _currentIndex;
                 return Expanded(
                   child: _FloatingNavItem(
                     label: tab.label,
                     icon: selected ? tab.activeIcon : tab.icon,
                     selected: selected,
+                    accent: accent,
                     onTap: () {
                       setState(() {
                         _currentIndex = index;
                       });
+                      _loadSettings();
                     },
                   ),
                 );
@@ -96,12 +126,14 @@ class _FloatingNavItem extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.selected,
+    required this.accent,
     required this.onTap,
   });
 
   final String label;
   final IconData icon;
   final bool selected;
+  final Color accent;
   final VoidCallback onTap;
 
   @override
@@ -120,7 +152,7 @@ class _FloatingNavItem extends StatelessWidget {
               width: selected ? 40 : 28,
               height: 22,
               decoration: BoxDecoration(
-                color: selected ? AppColors.primary : Colors.transparent,
+                color: selected ? accent : Colors.transparent,
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Icon(
@@ -133,7 +165,7 @@ class _FloatingNavItem extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: selected ? AppColors.text : AppColors.textSubtle,
+                color: selected ? accent : AppColors.textSubtle,
                 fontSize: 11,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               ),

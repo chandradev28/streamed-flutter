@@ -5,8 +5,8 @@ import '../services/real_debrid_api_service.dart';
 import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
 import 'addons_screen.dart';
-import 'indexer_status_screen.dart';
 import 'integrations_screen.dart';
+import 'layout_screen.dart';
 import 'torboxers_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -44,18 +44,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _openIndexerStatus() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => IndexerStatusScreen(),
-      ),
-    );
-  }
-
   void _openIntegrations() {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (BuildContext context) => const IntegrationsScreen(),
+      ),
+    );
+  }
+
+  void _openLayout() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => LayoutScreen(),
       ),
     );
   }
@@ -85,7 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'account profile trakt sync switch',
     );
     final bool showGeneral = _matchesSettingsSearch(
-      'general layout content discovery addons downloads playback integrations notifications torboxers indexer',
+      'general layout content discovery addons downloads playback integrations notifications torboxers',
     );
     final bool showAbout = _matchesSettingsSearch(
       'about supporters contributors licenses attribution',
@@ -174,7 +174,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: Icons.palette_rounded,
                     title: 'Layout',
                     subtitle: 'Home structure and poster styles',
-                    onTap: () => _showPlaceholder('Layout'),
+                    onTap: _openLayout,
                   ),
                   _SettingsActionTile(
                     icon: Icons.extension_rounded,
@@ -212,12 +212,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: 'Torboxers',
                     subtitle: 'Search streams and imported engines',
                     onTap: _openTorboxers,
-                  ),
-                  _SettingsActionTile(
-                    icon: Icons.wifi_tethering_rounded,
-                    title: 'Indexer Status',
-                    subtitle: 'Check Torrentio source health',
-                    onTap: _openIndexerStatus,
                   ),
                 ],
               ),

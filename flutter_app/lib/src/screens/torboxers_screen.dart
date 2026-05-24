@@ -12,7 +12,6 @@ import '../services/torbox_api_service.dart';
 import '../services/torbox_playlist_repository.dart';
 import '../theme/app_colors.dart';
 import 'addons_screen.dart';
-import 'indexer_status_screen.dart';
 import 'video_player_screen.dart';
 
 class TorboxersScreen extends StatefulWidget {
@@ -233,7 +232,7 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
     if (imdbId == null || imdbId.isEmpty || mediaType == null) {
       setState(() {
         _searchMessage =
-            'This screen needs a title with an IMDb ID to query Torrentio and any installed addons.';
+            'This screen needs a title with an IMDb ID to query installed stream addons.';
       });
       return;
     }
@@ -256,20 +255,6 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
           _addons = addons;
         });
       }
-
-      final List<StreamSource> indexerResults =
-          await widget.streamCatalogService.getBuiltInStreams(
-        imdbId: imdbId,
-        mediaType: mediaType,
-        seasonNumber: widget.seasonNumber,
-        episodeNumber: widget.episodeNumber,
-      );
-      for (final StreamSource item in indexerResults) {
-        if (seen.add(item.id)) {
-          merged.add(item);
-        }
-      }
-      sourceCounts['Torrentio'] = indexerResults.length;
 
       if (_settings.useAddons) {
         if (!addons.any(
@@ -746,14 +731,6 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
         .then((_) => _reloadSettingsAndSearch());
   }
 
-  void _openSourceStatus() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => IndexerStatusScreen(),
-      ),
-    );
-  }
-
   Future<void> _reloadSettingsAndSearch() async {
     final AppSettings settings = await widget.settingsRepository.loadSettings();
     final List<AddonManifest> addons =
@@ -821,7 +798,6 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: <Widget>[
-                      const _HeaderChip(label: 'Torrentio'),
                       _HeaderChip(
                         label: _settings.useAddons ? 'Addons on' : 'Addons off',
                       ),
@@ -1369,18 +1345,11 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Built-in source: Torrentio\nAddons merged: ${_settings.useAddons ? 'Yes' : 'No'}\nInstalled stream addons: ${_addons.where((AddonManifest addon) => addon.enabled && addon.hasStreamResource).length}\nImported keyword engines: ${_importedEngines.where((ImportedEngine engine) => engine.keywordSearch).length}\nEnabled engines: ${_importedEngines.where((ImportedEngine engine) => engine.enabled).length}',
+                'Addon search: ${_settings.useAddons ? 'Enabled' : 'Disabled'}\nInstalled stream addons: ${_addons.where((AddonManifest addon) => addon.enabled && addon.hasStreamResource).length}\nImported keyword engines: ${_importedEngines.where((ImportedEngine engine) => engine.keywordSearch).length}\nEnabled engines: ${_importedEngines.where((ImportedEngine engine) => engine.enabled).length}',
                 style: const TextStyle(color: AppColors.textMuted, height: 1.5),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 12),
-        _SettingsJumpCard(
-          title: 'Source status',
-          subtitle:
-              'Check Torrentio health and review how built-in search works.',
-          onTap: _openSourceStatus,
         ),
         const SizedBox(height: 12),
         _SettingsJumpCard(
@@ -1406,7 +1375,7 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
                   Border.all(color: const Color(0xFFF59E0B).withOpacity(0.35)),
             ),
             child: const Text(
-              'Addons mode is enabled, but no installed addon currently exposes stream resources. Install a configured Torrentio, Comet, MediaFusion, or similar manifest to actually expand search.',
+              'Addons mode is enabled, but no installed addon currently exposes stream resources. Install a configured Comet, MediaFusion, or similar manifest to expand search.',
               style: TextStyle(
                 color: AppColors.textMuted,
                 height: 1.45,
@@ -1844,7 +1813,7 @@ class _SearchEmptyState extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             message ??
-                'Start a search from a movie or episode detail screen and Torboxers will aggregate Torrentio plus any enabled addons here.',
+                'Start a search from a movie or episode detail screen and Torboxers will aggregate enabled addons here.',
             textAlign: TextAlign.center,
             style: const TextStyle(color: AppColors.textMuted, height: 1.45),
           ),

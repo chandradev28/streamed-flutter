@@ -28,6 +28,20 @@ class AppSettings {
     this.mdbListTraktEnabled = true,
     this.mdbListLetterboxdEnabled = true,
     this.mdbListAudienceScoreEnabled = true,
+    this.layoutTheme = 'white',
+    this.amoledBlackEnabled = true,
+    this.continueWatchingEnabled = true,
+    this.continueWatchingStyle = 'wide',
+    this.continueWatchingPreferEpisodeThumbs = true,
+    this.continueWatchingFurthestEpisode = true,
+    this.continueWatchingShowUnaired = false,
+    this.continueWatchingBlurUnwatched = false,
+    this.continueWatchingResumePrompt = true,
+    this.continueWatchingSortOrder = 'default',
+    this.posterWidthPreset = 'balanced',
+    this.posterRadiusPreset = 'rounded',
+    this.posterLandscapeEnabled = false,
+    this.posterHideLabels = false,
   });
 
   final String? torBoxApiKey;
@@ -58,6 +72,20 @@ class AppSettings {
   final bool mdbListTraktEnabled;
   final bool mdbListLetterboxdEnabled;
   final bool mdbListAudienceScoreEnabled;
+  final String layoutTheme;
+  final bool amoledBlackEnabled;
+  final bool continueWatchingEnabled;
+  final String continueWatchingStyle;
+  final bool continueWatchingPreferEpisodeThumbs;
+  final bool continueWatchingFurthestEpisode;
+  final bool continueWatchingShowUnaired;
+  final bool continueWatchingBlurUnwatched;
+  final bool continueWatchingResumePrompt;
+  final String continueWatchingSortOrder;
+  final String posterWidthPreset;
+  final String posterRadiusPreset;
+  final bool posterLandscapeEnabled;
+  final bool posterHideLabels;
 
   AppSettings copyWith({
     String? torBoxApiKey,
@@ -92,6 +120,20 @@ class AppSettings {
     bool? mdbListTraktEnabled,
     bool? mdbListLetterboxdEnabled,
     bool? mdbListAudienceScoreEnabled,
+    String? layoutTheme,
+    bool? amoledBlackEnabled,
+    bool? continueWatchingEnabled,
+    String? continueWatchingStyle,
+    bool? continueWatchingPreferEpisodeThumbs,
+    bool? continueWatchingFurthestEpisode,
+    bool? continueWatchingShowUnaired,
+    bool? continueWatchingBlurUnwatched,
+    bool? continueWatchingResumePrompt,
+    String? continueWatchingSortOrder,
+    String? posterWidthPreset,
+    String? posterRadiusPreset,
+    bool? posterLandscapeEnabled,
+    bool? posterHideLabels,
   }) {
     return AppSettings(
       torBoxApiKey: clearApiKey ? null : (torBoxApiKey ?? this.torBoxApiKey),
@@ -136,6 +178,30 @@ class AppSettings {
           mdbListLetterboxdEnabled ?? this.mdbListLetterboxdEnabled,
       mdbListAudienceScoreEnabled:
           mdbListAudienceScoreEnabled ?? this.mdbListAudienceScoreEnabled,
+      layoutTheme: layoutTheme ?? this.layoutTheme,
+      amoledBlackEnabled: amoledBlackEnabled ?? this.amoledBlackEnabled,
+      continueWatchingEnabled:
+          continueWatchingEnabled ?? this.continueWatchingEnabled,
+      continueWatchingStyle:
+          continueWatchingStyle ?? this.continueWatchingStyle,
+      continueWatchingPreferEpisodeThumbs:
+          continueWatchingPreferEpisodeThumbs ??
+              this.continueWatchingPreferEpisodeThumbs,
+      continueWatchingFurthestEpisode: continueWatchingFurthestEpisode ??
+          this.continueWatchingFurthestEpisode,
+      continueWatchingShowUnaired:
+          continueWatchingShowUnaired ?? this.continueWatchingShowUnaired,
+      continueWatchingBlurUnwatched:
+          continueWatchingBlurUnwatched ?? this.continueWatchingBlurUnwatched,
+      continueWatchingResumePrompt:
+          continueWatchingResumePrompt ?? this.continueWatchingResumePrompt,
+      continueWatchingSortOrder:
+          continueWatchingSortOrder ?? this.continueWatchingSortOrder,
+      posterWidthPreset: posterWidthPreset ?? this.posterWidthPreset,
+      posterRadiusPreset: posterRadiusPreset ?? this.posterRadiusPreset,
+      posterLandscapeEnabled:
+          posterLandscapeEnabled ?? this.posterLandscapeEnabled,
+      posterHideLabels: posterHideLabels ?? this.posterHideLabels,
     );
   }
 
@@ -176,6 +242,26 @@ class AppSettings {
           json['mdbListLetterboxdEnabled'] as bool? ?? true,
       mdbListAudienceScoreEnabled:
           json['mdbListAudienceScoreEnabled'] as bool? ?? true,
+      layoutTheme: json['layoutTheme'] as String? ?? 'white',
+      amoledBlackEnabled: json['amoledBlackEnabled'] as bool? ?? true,
+      continueWatchingEnabled: json['continueWatchingEnabled'] as bool? ?? true,
+      continueWatchingStyle: json['continueWatchingStyle'] as String? ?? 'wide',
+      continueWatchingPreferEpisodeThumbs:
+          json['continueWatchingPreferEpisodeThumbs'] as bool? ?? true,
+      continueWatchingFurthestEpisode:
+          json['continueWatchingFurthestEpisode'] as bool? ?? true,
+      continueWatchingShowUnaired:
+          json['continueWatchingShowUnaired'] as bool? ?? false,
+      continueWatchingBlurUnwatched:
+          json['continueWatchingBlurUnwatched'] as bool? ?? false,
+      continueWatchingResumePrompt:
+          json['continueWatchingResumePrompt'] as bool? ?? true,
+      continueWatchingSortOrder:
+          json['continueWatchingSortOrder'] as String? ?? 'default',
+      posterWidthPreset: json['posterWidthPreset'] as String? ?? 'balanced',
+      posterRadiusPreset: json['posterRadiusPreset'] as String? ?? 'rounded',
+      posterLandscapeEnabled: json['posterLandscapeEnabled'] as bool? ?? false,
+      posterHideLabels: json['posterHideLabels'] as bool? ?? false,
     );
   }
 
@@ -209,6 +295,21 @@ class AppSettings {
       'mdbListTraktEnabled': mdbListTraktEnabled,
       'mdbListLetterboxdEnabled': mdbListLetterboxdEnabled,
       'mdbListAudienceScoreEnabled': mdbListAudienceScoreEnabled,
+      'layoutTheme': layoutTheme,
+      'amoledBlackEnabled': amoledBlackEnabled,
+      'continueWatchingEnabled': continueWatchingEnabled,
+      'continueWatchingStyle': continueWatchingStyle,
+      'continueWatchingPreferEpisodeThumbs':
+          continueWatchingPreferEpisodeThumbs,
+      'continueWatchingFurthestEpisode': continueWatchingFurthestEpisode,
+      'continueWatchingShowUnaired': continueWatchingShowUnaired,
+      'continueWatchingBlurUnwatched': continueWatchingBlurUnwatched,
+      'continueWatchingResumePrompt': continueWatchingResumePrompt,
+      'continueWatchingSortOrder': continueWatchingSortOrder,
+      'posterWidthPreset': posterWidthPreset,
+      'posterRadiusPreset': posterRadiusPreset,
+      'posterLandscapeEnabled': posterLandscapeEnabled,
+      'posterHideLabels': posterHideLabels,
     };
   }
 }
@@ -857,38 +958,6 @@ int? _readInt(dynamic value) {
 String? _readString(dynamic value) {
   final String text = value?.toString().trim() ?? '';
   return text.isEmpty ? null : text;
-}
-
-class IndexerHealth {
-  const IndexerHealth({
-    required this.isOnline,
-    required this.responseTime,
-    required this.streamCount,
-    this.error,
-  });
-
-  final bool isOnline;
-  final int responseTime;
-  final int streamCount;
-  final String? error;
-}
-
-class IndexerStatusDetail {
-  const IndexerStatusDetail({
-    required this.id,
-    required this.name,
-    required this.isOnline,
-    required this.responseTime,
-    this.streamCount = 0,
-    this.error,
-  });
-
-  final String id;
-  final String name;
-  final bool isOnline;
-  final int responseTime;
-  final int streamCount;
-  final String? error;
 }
 
 class MagnetHistoryItem {
