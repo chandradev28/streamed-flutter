@@ -21,6 +21,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Set up Flutter 3.24.0
         uses: subosito/flutter-action@v2
         with:
@@ -29,7 +32,7 @@ jobs:
           cache: true
 
       - name: Install Android SDK 36
-        run: yes | sdkmanager "platforms;android-36"
+        run: yes | sdkmanager --install "platforms;android-36"
 
       - name: Install dependencies
         run: flutter pub get
