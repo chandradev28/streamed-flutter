@@ -47,14 +47,31 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField).first, 'tb_test_key');
-    await tester.tap(find.text('Save key'));
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey<String>('torbox-api-key-field')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('torbox-api-key-field')),
+      'tb_test_key',
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey<String>('torbox-api-key-save-button')),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('torbox-api-key-save-button')),
+    );
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(ListView), const Offset(0, -500));
-    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('TorBox library (1)'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
 
-    expect(find.text('test@example.com'), findsOneWidget);
     expect(find.text('Sample Torrent'), findsOneWidget);
     expect(find.text('TorBox library (1)'), findsOneWidget);
   });

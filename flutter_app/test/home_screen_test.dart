@@ -41,22 +41,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(
-        find.byKey(const ValueKey<String>('home-menu-button')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('home-profile-button')),
-        findsOneWidget);
+      find.byKey(const ValueKey<String>('home-menu-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('home-profile-button')),
+      findsOneWidget,
+    );
     expect(find.text('Streamed'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey<String>('home-menu-button')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Menu'), findsOneWidget);
-    expect(find.text('Torboxers'), findsOneWidget);
-    expect(find.text('Indexer Status'), findsOneWidget);
-    expect(find.text('Stream Addons'), findsOneWidget);
-    expect(find.text('App Settings'), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.close_rounded));
-    await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
       find.text('Continue Watching'),
@@ -65,6 +57,13 @@ void main() {
     );
 
     expect(find.text('Continue Watching'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('Space Show'),
+      80,
+      scrollable: find.byType(Scrollable).first,
+    );
+
     expect(find.text('Space Show'), findsOneWidget);
 
     await tester.scrollUntilVisible(

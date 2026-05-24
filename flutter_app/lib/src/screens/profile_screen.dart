@@ -5,7 +5,10 @@ import '../services/app_settings_repository.dart';
 import '../services/real_debrid_api_service.dart';
 import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
+import 'addons_screen.dart';
+import 'indexer_status_screen.dart';
 import 'magnet_screen.dart';
+import 'torboxers_screen.dart';
 import 'video_player_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -30,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _realDebridKeyController =
       TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   AppSettings _settings = const AppSettings();
   TorBoxUser? _user;
   RealDebridUser? _realDebridUser;
@@ -51,6 +55,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _apiKeyController.dispose();
     _realDebridKeyController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -304,262 +309,303 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  void _openTorboxers() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => TorboxersScreen(),
+      ),
+    );
+  }
+
+  void _openAddons() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => AddonsScreen(),
+      ),
+    );
+  }
+
+  void _openIndexerStatus() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => IndexerStatusScreen(),
+      ),
+    );
+  }
+
+  bool _matchesSettingsSearch(String value) {
+    final String query = _searchController.text.trim().toLowerCase();
+    return query.isEmpty || value.toLowerCase().contains(query);
+  }
+
+  void _showPlaceholder(String title) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$title is not wired yet.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool showAccount = _matchesSettingsSearch(
+      'account profile trakt sync torbox real debrid plan library',
+    );
+    final bool showGeneral = _matchesSettingsSearch(
+      'general layout content discovery addons sources indexer torboxers downloads integrations torbox real debrid',
+    );
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _load,
           child: ListView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
             children: <Widget>[
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Text(
-                      'TorBox integration',
+              Row(
+                children: <Widget>[
+                  IconButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                  ),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      'Settings',
                       style: TextStyle(
                         color: AppColors.text,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 38,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1.2,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Connect the TorBox account used by search, library, magnet import, and the player tools.',
-                      style:
-                          TextStyle(color: AppColors.textMuted, height: 1.45),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _apiKeyController,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      textCapitalization: TextCapitalization.none,
-                      style: const TextStyle(color: AppColors.text),
-                      decoration: InputDecoration(
-                        hintText: 'TorBox API key',
-                        hintStyle: const TextStyle(color: AppColors.textSubtle),
-                        filled: true,
-                        fillColor: Colors.white.withOpacity(0.04),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: <Widget>[
-                        FilledButton(
-                          onPressed: _saving ? null : _saveApiKey,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.text,
-                            foregroundColor: AppColors.background,
-                          ),
-                          child: Text(_saving ? 'Saving...' : 'Save key'),
-                        ),
-                        FilledButton.tonal(
-                          onPressed: _settings.torBoxApiKey == null
-                              ? null
-                              : _removeApiKey,
-                          child: const Text('Remove'),
-                        ),
-                        FilledButton.tonal(
-                          onPressed: _openMagnet,
-                          child: const Text('Open Magnet'),
-                        ),
-                        FilledButton.tonal(
-                          onPressed: _loading ? null : _load,
-                          child: const Text('Refresh'),
-                        ),
-                      ],
-                    ),
-                    if (_torBoxStatus != null) ...<Widget>[
-                      const SizedBox(height: 12),
-                      _TorBoxStatusBanner(
-                        message: _torBoxStatus!,
-                        error: _user == null,
-                      ),
-                    ],
-                  ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 22),
+              TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                style: const TextStyle(color: AppColors.text),
+                decoration: InputDecoration(
+                  hintText: 'Search settings...',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  filled: true,
+                  fillColor: AppColors.cardBackground,
+                  hintStyle: const TextStyle(color: AppColors.textSubtle),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide:
+                        BorderSide(color: Colors.white.withOpacity(0.05)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide:
+                        BorderSide(color: Colors.white.withOpacity(0.05)),
+                  ),
                 ),
               ),
-              const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(height: 22),
+              if (showAccount) ...<Widget>[
+                const _SettingsSectionLabel('ACCOUNT'),
+                _SettingsGroupCard(
                   children: <Widget>[
-                    const Text(
-                      'Real-Debrid integration',
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    _SettingsActionTile(
+                      icon: Icons.groups_rounded,
+                      title: 'Switch Profile',
+                      subtitle: 'Change to a different profile.',
+                      onTap: () => _showPlaceholder('Switch Profile'),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Optional RD resolver for cached streams. Sources marked RD+ can resolve directly through Real-Debrid.',
-                      style:
-                          TextStyle(color: AppColors.textMuted, height: 1.45),
+                    _SettingsActionTile(
+                      icon: Icons.account_circle_rounded,
+                      title: 'Account',
+                      subtitle: _user == null
+                          ? 'Account and sync status'
+                          : '${_user!.email} · ${_user!.plan}',
+                      onTap: _loading ? null : _load,
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _realDebridKeyController,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      textCapitalization: TextCapitalization.none,
-                      style: const TextStyle(color: AppColors.text),
-                      decoration: InputDecoration(
-                        hintText: 'Real-Debrid API token',
-                        hintStyle: const TextStyle(color: AppColors.textSubtle),
-                        filled: true,
-                        fillColor: Colors.white.withOpacity(0.04),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
+                    _SettingsActionTile(
+                      icon: Icons.checklist_rtl_rounded,
+                      title: 'Trakt',
+                      subtitle: 'Open Trakt connection screen',
+                      accent: const Color(0xFFCE3CCB),
+                      onTap: () => _showPlaceholder('Trakt'),
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: <Widget>[
-                        FilledButton(
-                          onPressed: _saving ? null : _saveRealDebridApiKey,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.text,
-                            foregroundColor: AppColors.background,
-                          ),
-                          child: Text(_saving ? 'Saving...' : 'Save RD token'),
-                        ),
-                        FilledButton.tonal(
-                          onPressed: _settings.realDebridApiKey == null
-                              ? null
-                              : _removeRealDebridApiKey,
-                          child: const Text('Remove RD'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Preferred resolver',
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: <Widget>[
-                        ChoiceChip(
-                          label: const Text('TorBox first'),
-                          selected:
-                              _settings.preferredDebridProvider == 'torbox',
-                          onSelected: (_) => _setPreferredDebrid('torbox'),
-                        ),
-                        ChoiceChip(
-                          label: const Text('Real-Debrid first'),
-                          selected:
-                              _settings.preferredDebridProvider == 'realdebrid',
-                          onSelected: (_) => _setPreferredDebrid('realdebrid'),
-                        ),
-                      ],
-                    ),
-                    if (_realDebridUser != null) ...<Widget>[
-                      const SizedBox(height: 12),
-                      _AccountRow(
-                        label: 'Account',
-                        value: _realDebridUser!.username,
-                      ),
-                      if (_realDebridUser!.email.isNotEmpty)
-                        _AccountRow(
-                          label: 'Email',
-                          value: _realDebridUser!.email,
-                        ),
-                      _AccountRow(
-                        label: 'Plan',
-                        value: _realDebridUser!.type,
-                      ),
-                      if ((_realDebridUser!.expiration ?? '').isNotEmpty)
-                        _AccountRow(
-                          label: 'Expires',
-                          value: _realDebridUser!.expiration!,
-                        ),
-                    ],
-                    if (_realDebridStatus != null) ...<Widget>[
-                      const SizedBox(height: 12),
-                      _TorBoxStatusBanner(
-                        message: _realDebridStatus!,
-                        error: _realDebridUser == null,
-                      ),
-                    ],
                   ],
                 ),
-              ),
-              const SizedBox(height: 18),
-              if (_user != null)
+                const SizedBox(height: 22),
+              ],
+              if (showGeneral) ...<Widget>[
+                const _SettingsSectionLabel('GENERAL'),
+                _SettingsGroupCard(
+                  children: <Widget>[
+                    _SettingsActionTile(
+                      icon: Icons.palette_rounded,
+                      title: 'Layout',
+                      subtitle: 'Home structure and poster styles',
+                      onTap: () => _showPlaceholder('Layout'),
+                    ),
+                    _SettingsActionTile(
+                      icon: Icons.extension_rounded,
+                      title: 'Content & Discovery',
+                      subtitle: 'Manage addons and discovery sources.',
+                      onTap: _openAddons,
+                    ),
+                    _SettingsActionTile(
+                      icon: Icons.cloud_download_rounded,
+                      title: 'Downloads',
+                      subtitle: 'Manage your downloaded movies and episodes.',
+                      onTap: () => _showPlaceholder('Downloads'),
+                    ),
+                    _SettingsActionTile(
+                      icon: Icons.rocket_launch_rounded,
+                      title: 'Torboxers',
+                      subtitle: 'Search streams and imported engines',
+                      onTap: _openTorboxers,
+                    ),
+                    _SettingsActionTile(
+                      icon: Icons.wifi_tethering_rounded,
+                      title: 'Indexer Status',
+                      subtitle: 'Check Torrentio source health',
+                      onTap: _openIndexerStatus,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                const _SettingsSectionLabel('INTEGRATIONS'),
+                _IntegrationPanel(
+                  textFieldKey: const ValueKey<String>('torbox-api-key-field'),
+                  saveButtonKey:
+                      const ValueKey<String>('torbox-api-key-save-button'),
+                  title: 'TorBox',
+                  subtitle:
+                      'Used by source resolving, library, magnet import, and player tools.',
+                  icon: Icons.dns_rounded,
+                  controller: _apiKeyController,
+                  hintText: 'TorBox API key',
+                  saving: _saving,
+                  connected: _settings.torBoxApiKey != null,
+                  onSave: _saveApiKey,
+                  onRemove: _removeApiKey,
+                  onRefresh: _load,
+                  extraActions: <Widget>[
+                    FilledButton.tonal(
+                      onPressed: _openMagnet,
+                      child: const Text('Open Magnet'),
+                    ),
+                  ],
+                  status: _torBoxStatus == null
+                      ? null
+                      : _TorBoxStatusBanner(
+                          message: _torBoxStatus!,
+                          error: _user == null,
+                        ),
+                ),
+                const SizedBox(height: 14),
+                _IntegrationPanel(
+                  textFieldKey:
+                      const ValueKey<String>('realdebrid-api-key-field'),
+                  saveButtonKey:
+                      const ValueKey<String>('realdebrid-api-key-save-button'),
+                  title: 'Real-Debrid',
+                  subtitle:
+                      'Optional RD resolver. Sources marked RD+ can resolve directly through Real-Debrid.',
+                  icon: Icons.bolt_rounded,
+                  controller: _realDebridKeyController,
+                  hintText: 'Real-Debrid API token',
+                  saving: _saving,
+                  connected: _settings.realDebridApiKey != null,
+                  onSave: _saveRealDebridApiKey,
+                  onRemove: _removeRealDebridApiKey,
+                  onRefresh: _load,
+                  status: _realDebridStatus == null
+                      ? null
+                      : _TorBoxStatusBanner(
+                          message: _realDebridStatus!,
+                          error: _realDebridUser == null,
+                        ),
+                ),
+                const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     color: AppColors.cardBackground,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: Colors.white.withOpacity(0.05)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       const Text(
-                        'Account',
+                        'Preferred resolver',
                         style: TextStyle(
                           color: AppColors.text,
                           fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      _AccountRow(label: 'Email', value: _user!.email),
-                      _AccountRow(label: 'Plan', value: _user!.plan),
-                      if (_user!.hasSlotInfo)
-                        _AccountRow(
-                          label: 'Slots',
-                          value: '${_user!.usedSlots}/${_user!.totalSlots}',
-                        ),
-                      if ((_user!.premiumExpiresAt ?? '').isNotEmpty)
-                        _AccountRow(
-                          label: 'Renews',
-                          value: _user!.premiumExpiresAt!,
-                        ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: <Widget>[
+                          ChoiceChip(
+                            label: const Text('TorBox first'),
+                            selected:
+                                _settings.preferredDebridProvider == 'torbox',
+                            onSelected: (_) => _setPreferredDebrid('torbox'),
+                          ),
+                          ChoiceChip(
+                            label: const Text('Real-Debrid first'),
+                            selected: _settings.preferredDebridProvider ==
+                                'realdebrid',
+                            onSelected: (_) =>
+                                _setPreferredDebrid('realdebrid'),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
-              const SizedBox(height: 18),
+              ],
+              if (_user != null || _realDebridUser != null) ...<Widget>[
+                const SizedBox(height: 22),
+                const _SettingsSectionLabel('CONNECTED ACCOUNTS'),
+                _SettingsGroupCard(
+                  children: <Widget>[
+                    if (_user != null)
+                      _SettingsInfoTile(
+                        title: 'TorBox account',
+                        rows: <String>[
+                          _user!.email,
+                          _user!.plan,
+                          if (_user!.hasSlotInfo)
+                            'Slots ${_user!.usedSlots}/${_user!.totalSlots}',
+                          if ((_user!.premiumExpiresAt ?? '').isNotEmpty)
+                            'Renews ${_user!.premiumExpiresAt}',
+                        ],
+                      ),
+                    if (_realDebridUser != null)
+                      _SettingsInfoTile(
+                        title: 'Real-Debrid account',
+                        rows: <String>[
+                          _realDebridUser!.username,
+                          if (_realDebridUser!.email.isNotEmpty)
+                            _realDebridUser!.email,
+                          _realDebridUser!.type,
+                          if ((_realDebridUser!.expiration ?? '').isNotEmpty)
+                            'Expires ${_realDebridUser!.expiration}',
+                        ],
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 22),
               Text(
                 'TorBox library (${_torrents.length})',
                 style: const TextStyle(
                   color: AppColors.text,
                   fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 12),
@@ -699,6 +745,284 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
+class _SettingsSectionLabel extends StatelessWidget {
+  const _SettingsSectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: 10),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsGroupCard extends StatelessWidget {
+  const _SettingsGroupCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _SettingsActionTile extends StatelessWidget {
+  const _SettingsActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.accent,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: onTap,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+      leading: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: (accent ?? Colors.white)
+              .withOpacity(accent == null ? 0.08 : 0.22),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(icon, color: AppColors.text, size: 24),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: AppColors.text,
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 13,
+          height: 1.25,
+        ),
+      ),
+      trailing: const Icon(
+        Icons.chevron_right_rounded,
+        color: AppColors.textMuted,
+      ),
+    );
+  }
+}
+
+class _SettingsInfoTile extends StatelessWidget {
+  const _SettingsInfoTile({
+    required this.title,
+    required this.rows,
+  });
+
+  final String title;
+  final List<String> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...rows.map(
+            (String row) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                row,
+                style: const TextStyle(color: AppColors.textMuted),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IntegrationPanel extends StatelessWidget {
+  const _IntegrationPanel({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.controller,
+    required this.hintText,
+    required this.textFieldKey,
+    required this.saveButtonKey,
+    required this.saving,
+    required this.connected,
+    required this.onSave,
+    required this.onRemove,
+    required this.onRefresh,
+    this.extraActions = const <Widget>[],
+    this.status,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final TextEditingController controller;
+  final String hintText;
+  final Key textFieldKey;
+  final Key saveButtonKey;
+  final bool saving;
+  final bool connected;
+  final VoidCallback onSave;
+  final VoidCallback onRemove;
+  final VoidCallback onRefresh;
+  final List<Widget> extraActions;
+  final Widget? status;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: AppColors.text),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      connected ? 'Connected' : 'Not connected',
+                      style: TextStyle(
+                        color: connected
+                            ? const Color(0xFFBBF7D0)
+                            : AppColors.textMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            subtitle,
+            style: const TextStyle(color: AppColors.textMuted, height: 1.45),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: textFieldKey,
+            controller: controller,
+            autocorrect: false,
+            enableSuggestions: false,
+            textCapitalization: TextCapitalization.none,
+            style: const TextStyle(color: AppColors.text),
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: const TextStyle(color: AppColors.textSubtle),
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.04),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: <Widget>[
+              FilledButton(
+                key: saveButtonKey,
+                onPressed: saving ? null : onSave,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.text,
+                  foregroundColor: AppColors.background,
+                ),
+                child: Text(saving ? 'Saving...' : 'Save'),
+              ),
+              FilledButton.tonal(
+                onPressed: connected ? onRemove : null,
+                child: const Text('Remove'),
+              ),
+              FilledButton.tonal(
+                onPressed: onRefresh,
+                child: const Text('Refresh'),
+              ),
+              ...extraActions,
+            ],
+          ),
+          if (status != null) ...<Widget>[
+            const SizedBox(height: 12),
+            status!,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _TorBoxStatusBanner extends StatelessWidget {
   const _TorBoxStatusBanner({
     required this.message,
@@ -729,40 +1053,6 @@ class _TorBoxStatusBanner extends StatelessWidget {
           height: 1.4,
           fontWeight: FontWeight.w600,
         ),
-      ),
-    );
-  }
-}
-
-class _AccountRow extends StatelessWidget {
-  const _AccountRow({
-    required this.label,
-    required this.value,
-  });
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: <Widget>[
-          SizedBox(
-            width: 84,
-            child: Text(
-              label,
-              style: const TextStyle(color: AppColors.textMuted),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: AppColors.text),
-            ),
-          ),
-        ],
       ),
     );
   }

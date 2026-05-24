@@ -21,7 +21,9 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(
-        find.byKey(const ValueKey<String>('home-menu-button')), findsOneWidget);
+      find.byKey(const ValueKey<String>('home-menu-button')),
+      findsNothing,
+    );
     expect(find.text('Streamed'), findsOneWidget);
 
     await tester.scrollUntilVisible(
