@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:fvp/fvp.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
@@ -73,8 +76,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _saving = false;
   bool _initialized = false;
   bool _showControls = true;
+  bool _subtitlesVisible = true;
+  bool _landscapeLocked = false;
   String? _error;
+  String? _externalSubtitleName;
   _PlaybackIssue? _playbackIssue;
+  List<dynamic> _audioTracks = const <dynamic>[];
+  List<dynamic> _subtitleTracks = const <dynamic>[];
+  List<int> _activeAudioTracks = const <int>[];
+  List<int> _activeSubtitleTracks = const <int>[];
   int _lastPersistedSecond = -1;
 
   @override
@@ -334,9 +344,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _controller = nextController;
         _initialized = true;
         _loading = false;
+        _showControls = true;
         _duration = nextController!.value.duration;
         _position = nextController.value.position;
       });
+      await _refreshMediaTracks();
+      unawaited(
+        Future<void>.delayed(
+          const Duration(milliseconds: 500),
+          _refreshMediaTracks,
+        ),
+      );
     } catch (error) {
       await nextController?.dispose();
       if (!mounted) {
@@ -524,6 +542,162 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  Future<void> _refreshMediaTracks() async {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null || !_initialized) {
+      return;
+    }
+
+    try {
+      final dynamic mediaInfo = controller.getMediaInfo();
+      final List<dynamic> audio =
+          mediaInfo?.audio is List ? List<dynamic>.from(mediaInfo.audio) : [];
+      final List<dynamic> subtitles = mediaInfo?.subtitle is List
+          ? List<dynamic>.from(mediaInfo.subtitle)
+          : [];
+      final List<int> activeAudio =
+          controller.getActiveAudioTracks() ?? const <int>[];
+      final List<int> activeSubtitles =
+          controller.getActiveSubtitleTracks() ?? const <int>[];
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _audioTracks = audio;
+        _subtitleTracks = subtitles;
+        _activeAudioTracks = activeAudio;
+        _activeSubtitleTracks = activeSubtitles;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _audioTracks = const <dynamic>[];
+        _subtitleTracks = const <dynamic>[];
+        _activeAudioTracks = const <int>[];
+        _activeSubtitleTracks = const <int>[];
+      });
+    }
+  }
+
+  Future<void> _toggleOrientation() async {
+    final bool nextLandscape = !_landscapeLocked;
+    if (nextLandscape) {
+      await SystemChrome.setPreferredOrientations(
+        const <DeviceOrientation>[
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ],
+      );
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _landscapeLocked = nextLandscape;
+    });
+  }
+
+  Future<void> _selectAudioTrack(int trackIndex) async {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    try {
+      controller.setAudioTracks(<int>[trackIndex]);
+      await _refreshMediaTracks();
+    } catch (_) {
+      _showFeatureMessage(
+        'This player backend could not switch audio tracks for this file.',
+      );
+    }
+  }
+
+  Future<void> _selectSubtitleTrack(int? trackIndex) async {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    try {
+      if (trackIndex == null) {
+        controller.setSubtitleTracks(const <int>[]);
+        await controller.setClosedCaptionFile(null);
+        setState(() {
+          _subtitlesVisible = false;
+          _externalSubtitleName = null;
+        });
+      } else {
+        controller.setSubtitleTracks(<int>[trackIndex]);
+        setState(() {
+          _subtitlesVisible = true;
+        });
+      }
+      await _refreshMediaTracks();
+    } catch (_) {
+      _showFeatureMessage(
+        'This player backend could not switch subtitle tracks for this file.',
+      );
+    }
+  }
+
+  Future<void> _pickExternalSubtitle() async {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    final FilePickerResult? result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const <String>['srt', 'vtt', 'ass', 'ssa'],
+      allowMultiple: false,
+    );
+    final PlatformFile? pickedFile = result?.files.single;
+    final String? path = pickedFile?.path;
+    if (path == null || path.isEmpty) {
+      return;
+    }
+
+    try {
+      controller.setExternalSubtitle(path);
+      final String lower = pickedFile!.name.toLowerCase();
+      if (lower.endsWith('.srt') || lower.endsWith('.vtt')) {
+        final String raw = await File(path).readAsString();
+        final ClosedCaptionFile captions = lower.endsWith('.vtt')
+            ? WebVTTCaptionFile(raw)
+            : SubRipCaptionFile(raw);
+        await controller.setClosedCaptionFile(Future<ClosedCaptionFile>.value(
+          captions,
+        ));
+      } else {
+        await controller.setClosedCaptionFile(null);
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _externalSubtitleName = pickedFile.name;
+        _subtitlesVisible = true;
+      });
+      await _refreshMediaTracks();
+      _showFeatureMessage('External subtitles loaded: ${pickedFile.name}');
+    } catch (error) {
+      _showFeatureMessage('Could not load that subtitle file: $error');
+    }
+  }
+
+  void _showFeatureMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   String _friendlyError(Object error) {
     final _PlaybackIssue issue = _describePlaybackIssue(error);
     return '${issue.title}. ${issue.body}';
@@ -574,40 +748,148 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             orElse: () => null,
           );
 
-  void _showFileSelector() {
+  void _showAudioSheet() {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
+      showDragHandle: true,
       builder: (BuildContext context) {
-        return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: _files
-                .map(
-                  (TorBoxTorrentFile file) => ListTile(
-                    title: Text(
-                      file.displayName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.text),
-                    ),
-                    subtitle: Text(
-                      _formatBytes(file.size),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.textMuted),
-                    ),
-                    trailing: file.id == _activeFileId
-                        ? const Icon(Icons.check, color: AppColors.text)
-                        : null,
-                    onTap: () async {
-                      Navigator.of(context).maybePop();
-                      await _resolveFile(file.id);
-                    },
+        return _TrackSheet(
+          title: 'Audio',
+          emptyMessage:
+              'No alternate audio tracks were exposed by this stream. If the file has tracks but they do not appear here, open it in VLC/external player.',
+          tracks: _audioTracks,
+          activeTracks: _activeAudioTracks,
+          onSelect: (int trackIndex) async {
+            Navigator.of(context).maybePop();
+            await _selectAudioTrack(trackIndex);
+          },
+        );
+      },
+    );
+  }
+
+  void _showSubtitleSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      showDragHandle: true,
+      builder: (BuildContext context) {
+        return _SubtitleSheet(
+          tracks: _subtitleTracks,
+          activeTracks: _activeSubtitleTracks,
+          externalSubtitleName: _externalSubtitleName,
+          subtitlesVisible: _subtitlesVisible,
+          onDisable: () async {
+            Navigator.of(context).maybePop();
+            await _selectSubtitleTrack(null);
+          },
+          onSelect: (int trackIndex) async {
+            Navigator.of(context).maybePop();
+            await _selectSubtitleTrack(trackIndex);
+          },
+          onPickExternal: () async {
+            Navigator.of(context).maybePop();
+            await _pickExternalSubtitle();
+          },
+        );
+      },
+    );
+  }
+
+  void _showEpisodesSheet({
+    required List<SeasonFileGroup> seasonGroups,
+    required List<int> unparsedVideoIndices,
+    required List<ParsedEpisodeFile> extras,
+    required bool movieLikeFiles,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (BuildContext context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.72,
+          minChildSize: 0.35,
+          maxChildSize: 0.92,
+          builder: (
+            BuildContext context,
+            ScrollController scrollController,
+          ) {
+            return ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              children: <Widget>[
+                const Text(
+                  'Episodes & files',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
                   ),
-                )
-                .toList(growable: false),
-          ),
+                ),
+                const SizedBox(height: 12),
+                if (!movieLikeFiles && seasonGroups.isNotEmpty)
+                  ...seasonGroups.map(
+                    (SeasonFileGroup group) => Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: _EpisodeGroupCard(
+                        title: 'Season ${group.season}',
+                        episodes: group.episodes,
+                        files: _files,
+                        activeFileId: _activeFileId,
+                        onSelectFile: _loading
+                            ? null
+                            : (ParsedEpisodeFile episode) {
+                                Navigator.of(context).maybePop();
+                                _resolveFile(_files[episode.originalIndex].id);
+                              },
+                      ),
+                    ),
+                  ),
+                if (movieLikeFiles || unparsedVideoIndices.isNotEmpty) ...[
+                  _SheetSectionTitle(
+                    title: movieLikeFiles ? 'Video files' : 'Other video files',
+                  ),
+                  ...unparsedVideoIndices.map(
+                    (int index) => _FileTile(
+                      file: _files[index],
+                      active: _files[index].id == _activeFileId,
+                      onTap: _loading
+                          ? null
+                          : () {
+                              Navigator.of(context).maybePop();
+                              _resolveFile(_files[index].id);
+                            },
+                      subtitle: _formatBytes(_files[index].size),
+                    ),
+                  ),
+                ],
+                if (extras.isNotEmpty) ...[
+                  const _SheetSectionTitle(title: 'Extras'),
+                  ...extras.map(
+                    (ParsedEpisodeFile episode) => _FileTile(
+                      file: _files[episode.originalIndex],
+                      active: _files[episode.originalIndex].id == _activeFileId,
+                      onTap: _loading
+                          ? null
+                          : () {
+                              Navigator.of(context).maybePop();
+                              _resolveFile(
+                                _files[episode.originalIndex].id,
+                              );
+                            },
+                      leadingLabel: '#${episode.episode}',
+                      subtitle:
+                          '${episode.title} - ${_formatBytes(_files[episode.originalIndex].size)}',
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
         );
       },
     );
@@ -619,6 +901,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _progressTimer?.cancel();
     _controller?.removeListener(_handleControllerTick);
     _controller?.dispose();
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -667,354 +951,108 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           actions: <Widget>[
             if (_files.length > 1)
               IconButton(
-                onPressed: _showFileSelector,
+                onPressed: () => _showEpisodesSheet(
+                  seasonGroups: seasonGroups,
+                  unparsedVideoIndices: unparsedVideoIndices,
+                  extras: extras,
+                  movieLikeFiles: movieLikeFiles,
+                ),
                 icon: const Icon(Icons.playlist_play_outlined),
               ),
           ],
         ),
         body: SafeArea(
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
             children: <Widget>[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _showControls = !_showControls;
-                      });
-                    },
-                    child: DecoratedBox(
-                      decoration: const BoxDecoration(color: Colors.black),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: <Widget>[
-                          if (_initialized && controller != null)
-                            FittedBox(
-                              fit: BoxFit.contain,
-                              child: SizedBox(
-                                width: controller.value.size.width,
-                                height: controller.value.size.height,
-                                child: VideoPlayer(controller),
-                              ),
-                            ),
-                          if (_loading)
-                            const Center(
-                              child: CircularProgressIndicator(
-                                color: AppColors.text,
-                              ),
-                            ),
-                          if (_error != null)
-                            Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(14),
-                                child: _PlayerErrorPanel(
-                                  issue: _playbackIssue ??
-                                      _PlaybackIssue(
-                                        title: 'Playback failed',
-                                        body: _error!,
-                                        showExternalActions: true,
-                                      ),
-                                  hasFiles: _files.length > 1,
-                                  hasStreamUrl: hasStreamUrl,
-                                  onChooseFile: _showFileSelector,
-                                  onOpenExternal: _openExternalPlayer,
-                                  onCopyLink: _copyStreamUrl,
-                                  onRetry: _retryActiveFile,
-                                ),
-                              ),
-                            ),
-                          if (_showControls &&
-                              _initialized &&
-                              controller != null)
-                            Positioned.fill(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.18),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: <Widget>[
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: <Widget>[
-                                        _OverlayControlButton(
-                                          icon: Icons.replay_10,
-                                          onTap: () => _seekRelative(-10),
-                                        ),
-                                        const SizedBox(width: 18),
-                                        _OverlayControlButton(
-                                          icon: isPlaying
-                                              ? Icons.pause_circle_filled
-                                              : Icons.play_circle_fill,
-                                          size: 68,
-                                          onTap: _togglePlayPause,
-                                        ),
-                                        const SizedBox(width: 18),
-                                        _OverlayControlButton(
-                                          icon: Icons.forward_10,
-                                          onTap: () => _seekRelative(10),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
+              _PlayerStage(
+                controller: controller,
+                initialized: _initialized,
+                loading: _loading,
+                issue: _error == null
+                    ? null
+                    : _playbackIssue ??
+                        _PlaybackIssue(
+                          title: 'Playback failed',
+                          body: _error!,
+                          showExternalActions: true,
+                        ),
+                showControls: _showControls,
+                canControl: canControl,
+                isPlaying: isPlaying,
+                isBuffering: isBuffering,
+                displayTitle: displayTitle,
+                provider: widget.provider,
+                activeFile: activeFile,
+                torrentHash: widget.torrentHash,
+                positionLabel: canControl
+                    ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
+                    : 'Waiting for stream',
+                progress: progress,
+                subtitlesVisible: _subtitlesVisible,
+                externalSubtitleName: _externalSubtitleName,
+                audioTrackCount: _audioTracks.length,
+                subtitleTrackCount: _subtitleTracks.length,
+                landscapeLocked: _landscapeLocked,
+                hasFiles: _files.length > 1,
+                hasStreamUrl: hasStreamUrl,
+                saving: _saving,
+                onTap: () {
+                  setState(() {
+                    _showControls = !_showControls;
+                  });
+                },
+                onPlayPause: _togglePlayPause,
+                onBack10: () => _seekRelative(-10),
+                onForward10: () => _seekRelative(10),
+                onSeek: !canControl
+                    ? null
+                    : (double value) async {
+                        final int millis =
+                            (_duration.inMilliseconds * value).round();
+                        await controller.seekTo(Duration(milliseconds: millis));
+                      },
+                onChooseFile: () => _showEpisodesSheet(
+                  seasonGroups: seasonGroups,
+                  unparsedVideoIndices: unparsedVideoIndices,
+                  extras: extras,
+                  movieLikeFiles: movieLikeFiles,
                 ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      displayTitle,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.text,
-                        fontSize: 21,
-                        fontWeight: FontWeight.w700,
-                      ),
+                onOpenExternal: _openExternalPlayer,
+                onCopyLink: _copyStreamUrl,
+                onRetry: _retryActiveFile,
+                onAudio: _showAudioSheet,
+                onSubtitle: _showSubtitleSheet,
+                onOrientation: _toggleOrientation,
+                onSaveProgress: () async {
+                  final ScaffoldMessengerState messenger =
+                      ScaffoldMessenger.of(context);
+                  await _persistProgress();
+                  if (!mounted) {
+                    return;
+                  }
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text('Progress saved to Continue Watching.'),
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: <Widget>[
-                        _InfoChip(
-                          icon: isPlaying
-                              ? Icons.pause_circle_outline
-                              : Icons.play_circle_outline,
-                          label: isPlaying ? 'Playing' : 'Paused',
-                        ),
-                        if (isBuffering)
-                          const _InfoChip(
-                            icon: Icons.sync,
-                            label: 'Buffering',
-                          ),
-                        if (widget.provider != null)
-                          _InfoChip(
-                            icon: Icons.storage_outlined,
-                            label: widget.provider!,
-                          ),
-                        if (activeFile != null)
-                          _InfoChip(
-                            icon: _looksLikeHevc(activeFile.displayName)
-                                ? Icons.warning_amber_rounded
-                                : Icons.folder_open_outlined,
-                            label: _looksLikeHevc(activeFile.displayName)
-                                ? 'HEVC/x265'
-                                : activeFile.displayName,
-                          ),
-                        if (widget.torrentHash != null &&
-                            widget.torrentHash!.isNotEmpty)
-                          _InfoChip(
-                            icon: Icons.tag_outlined,
-                            label: widget.torrentHash!.substring(
-                              0,
-                              widget.torrentHash!.length > 10
-                                  ? 10
-                                  : widget.torrentHash!.length,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      canControl
-                          ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
-                          : 'Waiting for a playable stream',
-                      style: const TextStyle(color: AppColors.textMuted),
-                    ),
-                    const SizedBox(height: 10),
-                    Slider(
-                      value: progress,
-                      onChanged: !canControl
-                          ? null
-                          : (double value) async {
-                              final int millis =
-                                  (_duration.inMilliseconds * value).round();
-                              await controller.seekTo(
-                                Duration(milliseconds: millis),
-                              );
-                            },
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: <Widget>[
-                        FilledButton.tonal(
-                          onPressed: canControl ? _togglePlayPause : null,
-                          child: Text(isPlaying ? 'Pause' : 'Play'),
-                        ),
-                        FilledButton.tonal(
-                          onPressed:
-                              canControl ? () => _seekRelative(-10) : null,
-                          child: const Text('-10s'),
-                        ),
-                        FilledButton.tonal(
-                          onPressed:
-                              canControl ? () => _seekRelative(10) : null,
-                          child: const Text('+10s'),
-                        ),
-                        if (hasStreamUrl)
-                          FilledButton.tonal(
-                            onPressed: _openExternalPlayer,
-                            child: const Text('External player'),
-                          ),
-                        FilledButton.tonal(
-                          onPressed: _saving
-                              ? null
-                              : () async {
-                                  final ScaffoldMessengerState messenger =
-                                      ScaffoldMessenger.of(context);
-                                  await _persistProgress();
-                                  if (!mounted) {
-                                    return;
-                                  }
-                                  messenger.showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Progress saved to Continue Watching.',
-                                      ),
-                                    ),
-                                  );
-                                },
-                          child: Text(_saving ? 'Saving...' : 'Save progress'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
               if (_files.isNotEmpty) ...<Widget>[
-                const SizedBox(height: 18),
-                if (!movieLikeFiles && seasonGroups.isNotEmpty) ...<Widget>[
-                  const Text(
-                    'Episodes',
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
+                const SizedBox(height: 12),
+                _MiniLibraryCard(
+                  activeTitle: displayTitle,
+                  fileCount: _files.length,
+                  episodeCount: seasonGroups.fold<int>(0, (int total, group) {
+                    return total + group.episodes.length;
+                  }),
+                  onOpen: () => _showEpisodesSheet(
+                    seasonGroups: seasonGroups,
+                    unparsedVideoIndices: unparsedVideoIndices,
+                    extras: extras,
+                    movieLikeFiles: movieLikeFiles,
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Season packs are grouped by parsed episode numbers so you can jump into the right file.',
-                    style: TextStyle(color: AppColors.textMuted, height: 1.45),
-                  ),
-                  const SizedBox(height: 12),
-                  ...seasonGroups.map(
-                    (SeasonFileGroup group) => Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: _EpisodeGroupCard(
-                        title: 'Season ${group.season}',
-                        episodes: group.episodes,
-                        files: _files,
-                        activeFileId: _activeFileId,
-                        onSelectFile: _loading
-                            ? null
-                            : (ParsedEpisodeFile episode) => _resolveFile(
-                                  _files[episode.originalIndex].id,
-                                ),
-                      ),
-                    ),
-                  ),
-                ],
-                if (movieLikeFiles ||
-                    unparsedVideoIndices.isNotEmpty) ...<Widget>[
-                  Text(
-                    movieLikeFiles ? 'Video files' : 'Other video files',
-                    style: const TextStyle(
-                      color: AppColors.text,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ...unparsedVideoIndices.map(
-                    (int index) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _FileTile(
-                        file: _files[index],
-                        active: _files[index].id == _activeFileId,
-                        onTap: _loading
-                            ? null
-                            : () => _resolveFile(_files[index].id),
-                        subtitle: _formatBytes(_files[index].size),
-                      ),
-                    ),
-                  ),
-                ],
-                if (extras.isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 18),
-                  Text(
-                    movieLikeFiles ? 'Other files' : 'Extras',
-                    style: const TextStyle(
-                      color: AppColors.text,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ...extras.map(
-                    (ParsedEpisodeFile episode) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _FileTile(
-                        file: _files[episode.originalIndex],
-                        active:
-                            _files[episode.originalIndex].id == _activeFileId,
-                        onTap: _loading
-                            ? null
-                            : () =>
-                                _resolveFile(_files[episode.originalIndex].id),
-                        leadingLabel: '#${episode.episode}',
-                        subtitle:
-                            '${episode.title} - ${_formatBytes(_files[episode.originalIndex].size)}',
-                      ),
-                    ),
-                  ),
-                ],
-                if (!movieLikeFiles &&
-                    seasonGroups.isEmpty &&
-                    extras.isEmpty &&
-                    _files.isNotEmpty) ...<Widget>[
-                  const Text(
-                    'Files',
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ..._files.map(
-                    (TorBoxTorrentFile file) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _FileTile(
-                        file: file,
-                        active: file.id == _activeFileId,
-                        onTap: _loading ? null : () => _resolveFile(file.id),
-                        subtitle: _formatBytes(file.size),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ],
             ],
           ),
@@ -1053,6 +1091,791 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     return '${value.toStringAsFixed(value >= 10 || index == 0 ? 0 : 1)} ${sizes[index]}';
   }
+}
+
+class _PlayerStage extends StatelessWidget {
+  const _PlayerStage({
+    required this.controller,
+    required this.initialized,
+    required this.loading,
+    required this.issue,
+    required this.showControls,
+    required this.canControl,
+    required this.isPlaying,
+    required this.isBuffering,
+    required this.displayTitle,
+    required this.provider,
+    required this.activeFile,
+    required this.torrentHash,
+    required this.positionLabel,
+    required this.progress,
+    required this.subtitlesVisible,
+    required this.externalSubtitleName,
+    required this.audioTrackCount,
+    required this.subtitleTrackCount,
+    required this.landscapeLocked,
+    required this.hasFiles,
+    required this.hasStreamUrl,
+    required this.saving,
+    required this.onTap,
+    required this.onPlayPause,
+    required this.onBack10,
+    required this.onForward10,
+    required this.onSeek,
+    required this.onChooseFile,
+    required this.onOpenExternal,
+    required this.onCopyLink,
+    required this.onRetry,
+    required this.onAudio,
+    required this.onSubtitle,
+    required this.onOrientation,
+    required this.onSaveProgress,
+  });
+
+  final VideoPlayerController? controller;
+  final bool initialized;
+  final bool loading;
+  final _PlaybackIssue? issue;
+  final bool showControls;
+  final bool canControl;
+  final bool isPlaying;
+  final bool isBuffering;
+  final String displayTitle;
+  final String? provider;
+  final TorBoxTorrentFile? activeFile;
+  final String? torrentHash;
+  final String positionLabel;
+  final double progress;
+  final bool subtitlesVisible;
+  final String? externalSubtitleName;
+  final int audioTrackCount;
+  final int subtitleTrackCount;
+  final bool landscapeLocked;
+  final bool hasFiles;
+  final bool hasStreamUrl;
+  final bool saving;
+  final VoidCallback onTap;
+  final Future<void> Function() onPlayPause;
+  final Future<void> Function() onBack10;
+  final Future<void> Function() onForward10;
+  final ValueChanged<double>? onSeek;
+  final VoidCallback onChooseFile;
+  final Future<void> Function() onOpenExternal;
+  final Future<void> Function() onCopyLink;
+  final Future<void> Function() onRetry;
+  final VoidCallback onAudio;
+  final VoidCallback onSubtitle;
+  final Future<void> Function() onOrientation;
+  final Future<void> Function() onSaveProgress;
+
+  @override
+  Widget build(BuildContext context) {
+    final VideoPlayerController? activeController = controller;
+    final TorBoxTorrentFile? file = activeFile;
+    final bool looksHevc = file != null &&
+        RegExp(
+          r'(hevc|h\.?265|x265|10bit|10-bit|hi10|hvc1)',
+          caseSensitive: false,
+        ).hasMatch(file.displayName);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: GestureDetector(
+          onTap: onTap,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(color: Colors.black),
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                if (initialized && activeController != null)
+                  FittedBox(
+                    fit: BoxFit.contain,
+                    child: SizedBox(
+                      width: activeController.value.size.width,
+                      height: activeController.value.size.height,
+                      child: VideoPlayer(activeController),
+                    ),
+                  ),
+                if (initialized && activeController != null && subtitlesVisible)
+                  ClosedCaption(
+                    text: activeController.value.caption.text,
+                    textStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      height: 1.28,
+                      fontWeight: FontWeight.w700,
+                      shadows: <Shadow>[
+                        Shadow(
+                          color: Colors.black,
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                  ),
+                if (loading)
+                  const Center(
+                    child: CircularProgressIndicator(color: AppColors.text),
+                  ),
+                if (issue != null)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: _PlayerErrorPanel(
+                        issue: issue!,
+                        hasFiles: hasFiles,
+                        hasStreamUrl: hasStreamUrl,
+                        onChooseFile: onChooseFile,
+                        onOpenExternal: onOpenExternal,
+                        onCopyLink: onCopyLink,
+                        onRetry: onRetry,
+                      ),
+                    ),
+                  ),
+                if (showControls)
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: <Color>[
+                            Colors.black.withOpacity(0.74),
+                            Colors.black.withOpacity(0.18),
+                            Colors.black.withOpacity(0.88),
+                          ],
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        displayTitle,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w800,
+                                          height: 1.18,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 6,
+                                        children: <Widget>[
+                                          _PlayerPill(
+                                            icon: isPlaying
+                                                ? Icons.pause_rounded
+                                                : Icons.play_arrow_rounded,
+                                            label: isPlaying
+                                                ? 'Playing'
+                                                : 'Paused',
+                                          ),
+                                          if (isBuffering)
+                                            const _PlayerPill(
+                                              icon: Icons.sync_rounded,
+                                              label: 'Buffering',
+                                            ),
+                                          if (provider != null)
+                                            _PlayerPill(
+                                              icon: Icons.storage_outlined,
+                                              label: provider!,
+                                            ),
+                                          if (looksHevc)
+                                            const _PlayerPill(
+                                              icon: Icons.warning_amber_rounded,
+                                              label: 'HEVC/x265',
+                                            ),
+                                          if ((torrentHash ?? '').isNotEmpty)
+                                            _PlayerPill(
+                                              icon: Icons.tag_outlined,
+                                              label: torrentHash!.substring(
+                                                0,
+                                                torrentHash!.length > 8
+                                                    ? 8
+                                                    : torrentHash!.length,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                _MiniIconButton(
+                                  icon: landscapeLocked
+                                      ? Icons.screen_lock_rotation_rounded
+                                      : Icons.screen_rotation_alt_rounded,
+                                  onTap: onOrientation,
+                                ),
+                              ],
+                            ),
+                            const Spacer(),
+                            if (initialized && activeController != null)
+                              Center(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: <Widget>[
+                                    _OverlayControlButton(
+                                      icon: Icons.replay_10_rounded,
+                                      onTap: onBack10,
+                                    ),
+                                    const SizedBox(width: 18),
+                                    _OverlayControlButton(
+                                      icon: isPlaying
+                                          ? Icons.pause_rounded
+                                          : Icons.play_arrow_rounded,
+                                      size: 66,
+                                      onTap: onPlayPause,
+                                    ),
+                                    const SizedBox(width: 18),
+                                    _OverlayControlButton(
+                                      icon: Icons.forward_10_rounded,
+                                      onTap: onForward10,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            const Spacer(),
+                            Row(
+                              children: <Widget>[
+                                Text(
+                                  positionLabel,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const Spacer(),
+                                if ((externalSubtitleName ?? '').isNotEmpty)
+                                  Flexible(
+                                    child: Text(
+                                      externalSubtitleName!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                trackHeight: 3,
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 6,
+                                ),
+                              ),
+                              child: Slider(
+                                value: progress,
+                                onChanged: onSeek,
+                                activeColor: AppColors.accent,
+                                inactiveColor: Colors.white24,
+                              ),
+                            ),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: <Widget>[
+                                  _BottomToolButton(
+                                    icon: Icons.playlist_play_rounded,
+                                    label: hasFiles ? 'Episodes' : 'Files',
+                                    onTap: onChooseFile,
+                                  ),
+                                  _BottomToolButton(
+                                    icon: Icons.subtitles_rounded,
+                                    label: subtitleTrackCount > 0
+                                        ? 'Subs $subtitleTrackCount'
+                                        : 'Subs',
+                                    active: subtitlesVisible,
+                                    onTap: onSubtitle,
+                                  ),
+                                  _BottomToolButton(
+                                    icon: Icons.graphic_eq_rounded,
+                                    label: audioTrackCount > 0
+                                        ? 'Audio $audioTrackCount'
+                                        : 'Audio',
+                                    onTap: onAudio,
+                                  ),
+                                  if (hasStreamUrl)
+                                    _BottomToolButton(
+                                      icon: Icons.open_in_new_rounded,
+                                      label: 'External',
+                                      onTap: onOpenExternal,
+                                    ),
+                                  _BottomToolButton(
+                                    icon: saving
+                                        ? Icons.hourglass_top_rounded
+                                        : Icons.bookmark_add_outlined,
+                                    label: saving ? 'Saving' : 'Save',
+                                    onTap: onSaveProgress,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlayerPill extends StatelessWidget {
+  const _PlayerPill({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, color: Colors.white70, size: 13),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniIconButton extends StatelessWidget {
+  const _MiniIconButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withOpacity(0.10),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomToolButton extends StatelessWidget {
+  const _BottomToolButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final FutureOr<void> Function() onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: active
+            ? AppColors.accent.withOpacity(0.94)
+            : Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          onTap: () {
+            final FutureOr<void> result = onTap();
+            if (result is Future<void>) {
+              unawaited(result);
+            }
+          },
+          borderRadius: BorderRadius.circular(999),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(icon, color: Colors.white, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniLibraryCard extends StatelessWidget {
+  const _MiniLibraryCard({
+    required this.activeTitle,
+    required this.fileCount,
+    required this.episodeCount,
+    required this.onOpen,
+  });
+
+  final String activeTitle;
+  final int fileCount;
+  final int episodeCount;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.cardBackground,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.video_library_outlined,
+                  color: AppColors.text,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      activeTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      episodeCount > 0
+                          ? '$episodeCount parsed episodes · $fileCount files'
+                          : '$fileCount playable files',
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.keyboard_arrow_up_rounded),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetSectionTitle extends StatelessWidget {
+  const _SheetSectionTitle({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: AppColors.text,
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackSheet extends StatelessWidget {
+  const _TrackSheet({
+    required this.title,
+    required this.emptyMessage,
+    required this.tracks,
+    required this.activeTracks,
+    required this.onSelect,
+  });
+
+  final String title;
+  final String emptyMessage;
+  final List<dynamic> tracks;
+  final List<int> activeTracks;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        children: <Widget>[
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (tracks.isEmpty)
+            Text(
+              emptyMessage,
+              style: const TextStyle(color: AppColors.textMuted, height: 1.45),
+            )
+          else
+            ...tracks.map(
+              (dynamic track) {
+                final int index = _trackIndex(track);
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    activeTracks.contains(index)
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    color: AppColors.text,
+                  ),
+                  title: Text(
+                    _trackLabel(track, title),
+                    style: const TextStyle(color: AppColors.text),
+                  ),
+                  subtitle: Text(
+                    _trackDetail(track),
+                    style: const TextStyle(color: AppColors.textMuted),
+                  ),
+                  onTap: () => onSelect(index),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubtitleSheet extends StatelessWidget {
+  const _SubtitleSheet({
+    required this.tracks,
+    required this.activeTracks,
+    required this.externalSubtitleName,
+    required this.subtitlesVisible,
+    required this.onDisable,
+    required this.onSelect,
+    required this.onPickExternal,
+  });
+
+  final List<dynamic> tracks;
+  final List<int> activeTracks;
+  final String? externalSubtitleName;
+  final bool subtitlesVisible;
+  final Future<void> Function() onDisable;
+  final ValueChanged<int> onSelect;
+  final Future<void> Function() onPickExternal;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        children: <Widget>[
+          const Text(
+            'Subtitles',
+            style: TextStyle(
+              color: AppColors.text,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              !subtitlesVisible
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
+              color: AppColors.text,
+            ),
+            title: const Text(
+              'Off',
+              style: TextStyle(color: AppColors.text),
+            ),
+            onTap: onDisable,
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.add_rounded, color: AppColors.text),
+            title: const Text(
+              'Add external subtitle',
+              style: TextStyle(color: AppColors.text),
+            ),
+            subtitle: Text(
+              externalSubtitleName ?? 'SRT and VTT files are supported.',
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+            onTap: onPickExternal,
+          ),
+          if (tracks.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text(
+                'No embedded subtitle tracks were exposed by this stream.',
+                style: TextStyle(color: AppColors.textMuted, height: 1.45),
+              ),
+            )
+          else ...<Widget>[
+            const _SheetSectionTitle(title: 'Embedded tracks'),
+            ...tracks.map(
+              (dynamic track) {
+                final int index = _trackIndex(track);
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    activeTracks.contains(index)
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    color: AppColors.text,
+                  ),
+                  title: Text(
+                    _trackLabel(track, 'Subtitle'),
+                    style: const TextStyle(color: AppColors.text),
+                  ),
+                  subtitle: Text(
+                    _trackDetail(track),
+                    style: const TextStyle(color: AppColors.textMuted),
+                  ),
+                  onTap: () => onSelect(index),
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+int _trackIndex(dynamic track) {
+  try {
+    return track.index as int;
+  } catch (_) {
+    return 0;
+  }
+}
+
+String _trackLabel(dynamic track, String fallback) {
+  final int index = _trackIndex(track);
+  final Map<dynamic, dynamic> metadata = _trackMetadata(track);
+  final String? title = _metadataValue(metadata, <String>[
+    'title',
+    'handler_name',
+    'language',
+  ]);
+  return title == null || title.isEmpty ? '$fallback ${index + 1}' : title;
+}
+
+String _trackDetail(dynamic track) {
+  final Map<dynamic, dynamic> metadata = _trackMetadata(track);
+  final List<String> parts = <String>[
+    if (_metadataValue(metadata, <String>['language']) != null)
+      _metadataValue(metadata, <String>['language'])!,
+  ];
+  try {
+    final dynamic codec = track.codec;
+    final String codecName = codec.codec?.toString() ?? '';
+    if (codecName.isNotEmpty) {
+      parts.add(codecName);
+    }
+  } catch (_) {}
+  return parts.isEmpty ? 'Track #${_trackIndex(track)}' : parts.join(' · ');
+}
+
+Map<dynamic, dynamic> _trackMetadata(dynamic track) {
+  try {
+    final dynamic metadata = track.metadata;
+    if (metadata is Map<dynamic, dynamic>) {
+      return metadata;
+    }
+  } catch (_) {}
+  return const <dynamic, dynamic>{};
+}
+
+String? _metadataValue(Map<dynamic, dynamic> metadata, List<String> keys) {
+  for (final String key in keys) {
+    final String? value = metadata[key]?.toString().trim();
+    if (value != null && value.isNotEmpty) {
+      return value;
+    }
+  }
+  return null;
 }
 
 class _EpisodeGroupCard extends StatelessWidget {
@@ -1189,49 +2012,6 @@ String _formatBytesStatic(int bytes) {
   }
 
   return '${value.toStringAsFixed(value >= 10 || index == 0 ? 0 : 1)} ${sizes[index]}';
-}
-
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({
-    required this.icon,
-    required this.label,
-  });
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 280),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, color: AppColors.textMuted, size: 16),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.text,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _PlaybackIssue {
