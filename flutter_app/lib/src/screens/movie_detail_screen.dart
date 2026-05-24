@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/favorite_item.dart';
 import '../models/tmdb_media_models.dart';
 import '../services/favorites_repository.dart';
+import '../services/mdblist_api_service.dart';
 import '../services/tmdb_image.dart';
 import '../services/tmdb_media_service.dart';
 import '../theme/app_colors.dart';
@@ -14,13 +16,17 @@ class MovieDetailScreen extends StatefulWidget {
     super.key,
     required this.id,
     required this.mediaType,
-    this.mediaService = const TmdbMediaService(),
+    MediaCatalogService? mediaService,
+    MdbListApiService? mdbListApiService,
     FavoritesRepository? favoritesRepository,
-  }) : favoritesRepository = favoritesRepository ?? FavoritesRepository();
+  })  : mediaService = mediaService ?? TmdbMediaService(),
+        mdbListApiService = mdbListApiService ?? MdbListApiService(),
+        favoritesRepository = favoritesRepository ?? FavoritesRepository();
 
   final int id;
   final String mediaType;
   final MediaCatalogService mediaService;
+  final MdbListApiService mdbListApiService;
   final FavoritesRepository favoritesRepository;
 
   @override
@@ -31,6 +37,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   static const int _initialRetryCount = 3;
 
   MediaDetail? _detail;
+  List<ExternalRating> _externalRatings = const <ExternalRating>[];
   bool _loading = true;
   bool _showFullDescription = false;
   bool _isFavorited = false;
@@ -60,6 +67,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         _detail = detail;
         _loading = false;
       });
+      _loadExternalRatings(detail);
     } catch (_) {
       if (retryCount > 0) {
         // Exponential backoff: 400ms, 800ms, 1200ms
@@ -80,6 +88,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _loadExternalRatings(MediaDetail detail) async {
+    final List<ExternalRating> ratings =
+        await widget.mdbListApiService.getRatings(detail);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _externalRatings = ratings;
+    });
   }
 
   Future<void> _loadFavoriteState() async {
@@ -179,6 +198,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openTrailer(MediaTrailer trailer) async {
+    final Uri? url = trailer.url;
+    if (url == null) {
+      return;
+    }
+    await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   void _openSeason(SeasonSummary season) {
@@ -376,7 +403,23 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                             _RatingsRow(
                               score: detail.voteAverage,
                               votes: detail.voteCount,
+                              externalRatings: _externalRatings,
                             ),
+                            if (detail.trailers.isNotEmpty) ...<Widget>[
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: () =>
+                                    _openTrailer(detail.trailers.first),
+                                icon: const Icon(Icons.play_circle_outline),
+                                label: Text(
+                                  detail.trailers.first.name.isEmpty
+                                      ? 'Watch trailer'
+                                      : detail.trailers.first.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 14),
                             Wrap(
                               crossAxisAlignment: WrapCrossAlignment.center,
@@ -519,6 +562,33 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                       ),
                     ),
                   ),
+                if (detail.productionCompanies.isNotEmpty ||
+                    detail.networks.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: _HorizontalSection(
+                      title: 'Studios & networks',
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: <Widget>[
+                            ...detail.productionCompanies.map(
+                              (ProductionCompanyItem company) => Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: _TextChip(label: company.name),
+                              ),
+                            ),
+                            ...detail.networks.map(
+                              (NetworkItem network) => Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: _TextChip(label: network.name),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 const SliverToBoxAdapter(child: SizedBox(height: 40)),
               ],
             ),
@@ -562,10 +632,50 @@ class _RatingsRow extends StatelessWidget {
   const _RatingsRow({
     required this.score,
     required this.votes,
+    required this.externalRatings,
   });
 
   final double score;
   final int votes;
+  final List<ExternalRating> externalRatings;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: <Widget>[
+        _RatingChip(
+          label: 'TMDB',
+          score: score.toStringAsFixed(1),
+          votes: votes,
+          icon: Icons.star,
+        ),
+        ...externalRatings.map(
+          (ExternalRating rating) => _RatingChip(
+            label: rating.label,
+            score: rating.score,
+            votes: rating.votes,
+            icon: Icons.add_chart_rounded,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RatingChip extends StatelessWidget {
+  const _RatingChip({
+    required this.label,
+    required this.score,
+    required this.icon,
+    this.votes,
+  });
+
+  final String label;
+  final String score;
+  final IconData icon;
+  final int? votes;
 
   @override
   Widget build(BuildContext context) {
@@ -579,25 +689,68 @@ class _RatingsRow extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          const Icon(Icons.star, size: 16, color: Color(0xFFF5C518)),
+          Icon(icon, size: 16, color: const Color(0xFFF5C518)),
           const SizedBox(width: 8),
           Text(
-            score.toStringAsFixed(1),
+            score,
             style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
               color: AppColors.text,
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            '$votes votes',
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppColors.textMuted,
-            ),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (votes != null && votes! > 0)
+                Text(
+                  '$votes votes',
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: AppColors.textSubtle,
+                  ),
+                ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TextChip extends StatelessWidget {
+  const _TextChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 180),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: AppColors.text,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

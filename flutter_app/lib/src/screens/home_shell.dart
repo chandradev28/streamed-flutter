@@ -39,7 +39,7 @@ class _HomeShellState extends State<HomeShell> {
       label: 'Library',
       icon: Icons.favorite_border,
       activeIcon: Icons.favorite,
-      builder: (_) => const LibraryScreen(),
+      builder: (_) => LibraryScreen(),
     ),
   ];
 

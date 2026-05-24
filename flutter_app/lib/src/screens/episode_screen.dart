@@ -7,14 +7,14 @@ import '../theme/app_colors.dart';
 import 'streamed_sources_screen.dart';
 
 class EpisodeScreen extends StatefulWidget {
-  const EpisodeScreen({
+  EpisodeScreen({
     super.key,
     required this.tvId,
     required this.initialSeason,
     required this.showName,
     this.posterPath,
-    this.mediaService = const TmdbMediaService(),
-  });
+    MediaCatalogService? mediaService,
+  }) : mediaService = mediaService ?? TmdbMediaService();
 
   final int tvId;
   final int initialSeason;

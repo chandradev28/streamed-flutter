@@ -909,6 +909,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final VideoPlayerController? controller = _controller;
+    final MediaQueryData mediaQuery = MediaQuery.of(context);
+    final bool isLandscape = mediaQuery.orientation == Orientation.landscape;
     final bool isPlaying = controller?.value.isPlaying ?? false;
     final bool isBuffering = controller?.value.isBuffering ?? false;
     final double progress = _duration.inMilliseconds > 0
@@ -962,100 +964,187 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ],
         ),
         body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
-            children: <Widget>[
-              _PlayerStage(
-                controller: controller,
-                initialized: _initialized,
-                loading: _loading,
-                issue: _error == null
-                    ? null
-                    : _playbackIssue ??
-                        _PlaybackIssue(
-                          title: 'Playback failed',
-                          body: _error!,
-                          showExternalActions: true,
-                        ),
-                showControls: _showControls,
-                canControl: canControl,
-                isPlaying: isPlaying,
-                isBuffering: isBuffering,
-                displayTitle: displayTitle,
-                provider: widget.provider,
-                activeFile: activeFile,
-                torrentHash: widget.torrentHash,
-                positionLabel: canControl
-                    ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
-                    : 'Waiting for stream',
-                progress: progress,
-                subtitlesVisible: _subtitlesVisible,
-                externalSubtitleName: _externalSubtitleName,
-                audioTrackCount: _audioTracks.length,
-                subtitleTrackCount: _subtitleTracks.length,
-                landscapeLocked: _landscapeLocked,
-                hasFiles: _files.length > 1,
-                hasStreamUrl: hasStreamUrl,
-                saving: _saving,
-                onTap: () {
-                  setState(() {
-                    _showControls = !_showControls;
-                  });
-                },
-                onPlayPause: _togglePlayPause,
-                onBack10: () => _seekRelative(-10),
-                onForward10: () => _seekRelative(10),
-                onSeek: !canControl
-                    ? null
-                    : (double value) async {
-                        final int millis =
-                            (_duration.inMilliseconds * value).round();
-                        await controller.seekTo(Duration(milliseconds: millis));
-                      },
-                onChooseFile: () => _showEpisodesSheet(
-                  seasonGroups: seasonGroups,
-                  unparsedVideoIndices: unparsedVideoIndices,
-                  extras: extras,
-                  movieLikeFiles: movieLikeFiles,
-                ),
-                onOpenExternal: _openExternalPlayer,
-                onCopyLink: _copyStreamUrl,
-                onRetry: _retryActiveFile,
-                onAudio: _showAudioSheet,
-                onSubtitle: _showSubtitleSheet,
-                onOrientation: _toggleOrientation,
-                onSaveProgress: () async {
-                  final ScaffoldMessengerState messenger =
-                      ScaffoldMessenger.of(context);
-                  await _persistProgress();
-                  if (!mounted) {
-                    return;
-                  }
-                  messenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('Progress saved to Continue Watching.'),
+          child: isLandscape
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+                  child: _PlayerStage(
+                    height: double.infinity,
+                    controller: controller,
+                    initialized: _initialized,
+                    loading: _loading,
+                    issue: _error == null
+                        ? null
+                        : _playbackIssue ??
+                            _PlaybackIssue(
+                              title: 'Playback failed',
+                              body: _error!,
+                              showExternalActions: true,
+                            ),
+                    showControls: _showControls,
+                    canControl: canControl,
+                    isPlaying: isPlaying,
+                    isBuffering: isBuffering,
+                    displayTitle: displayTitle,
+                    provider: widget.provider,
+                    activeFile: activeFile,
+                    torrentHash: widget.torrentHash,
+                    positionLabel: canControl
+                        ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
+                        : 'Waiting for stream',
+                    progress: progress,
+                    subtitlesVisible: _subtitlesVisible,
+                    externalSubtitleName: _externalSubtitleName,
+                    audioTrackCount: _audioTracks.length,
+                    subtitleTrackCount: _subtitleTracks.length,
+                    landscapeLocked: _landscapeLocked,
+                    hasFiles: _files.length > 1,
+                    hasStreamUrl: hasStreamUrl,
+                    saving: _saving,
+                    onTap: () {
+                      setState(() {
+                        _showControls = !_showControls;
+                      });
+                    },
+                    onPlayPause: _togglePlayPause,
+                    onBack10: () => _seekRelative(-10),
+                    onForward10: () => _seekRelative(10),
+                    onSeek: !canControl
+                        ? null
+                        : (double value) async {
+                            final int millis =
+                                (_duration.inMilliseconds * value).round();
+                            await controller.seekTo(
+                              Duration(milliseconds: millis),
+                            );
+                          },
+                    onChooseFile: () => _showEpisodesSheet(
+                      seasonGroups: seasonGroups,
+                      unparsedVideoIndices: unparsedVideoIndices,
+                      extras: extras,
+                      movieLikeFiles: movieLikeFiles,
                     ),
-                  );
-                },
-              ),
-              if (_files.isNotEmpty) ...<Widget>[
-                const SizedBox(height: 12),
-                _MiniLibraryCard(
-                  activeTitle: displayTitle,
-                  fileCount: _files.length,
-                  episodeCount: seasonGroups.fold<int>(0, (int total, group) {
-                    return total + group.episodes.length;
-                  }),
-                  onOpen: () => _showEpisodesSheet(
-                    seasonGroups: seasonGroups,
-                    unparsedVideoIndices: unparsedVideoIndices,
-                    extras: extras,
-                    movieLikeFiles: movieLikeFiles,
+                    onOpenExternal: _openExternalPlayer,
+                    onCopyLink: _copyStreamUrl,
+                    onRetry: _retryActiveFile,
+                    onAudio: _showAudioSheet,
+                    onSubtitle: _showSubtitleSheet,
+                    onOrientation: _toggleOrientation,
+                    onSaveProgress: () async {
+                      final ScaffoldMessengerState messenger =
+                          ScaffoldMessenger.of(context);
+                      await _persistProgress();
+                      if (!mounted) {
+                        return;
+                      }
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Progress saved to Continue Watching.',
+                          ),
+                        ),
+                      );
+                    },
                   ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
+                  children: <Widget>[
+                    _PlayerStage(
+                      height:
+                          (mediaQuery.size.height * 0.46).clamp(390.0, 520.0),
+                      controller: controller,
+                      initialized: _initialized,
+                      loading: _loading,
+                      issue: _error == null
+                          ? null
+                          : _playbackIssue ??
+                              _PlaybackIssue(
+                                title: 'Playback failed',
+                                body: _error!,
+                                showExternalActions: true,
+                              ),
+                      showControls: _showControls,
+                      canControl: canControl,
+                      isPlaying: isPlaying,
+                      isBuffering: isBuffering,
+                      displayTitle: displayTitle,
+                      provider: widget.provider,
+                      activeFile: activeFile,
+                      torrentHash: widget.torrentHash,
+                      positionLabel: canControl
+                          ? '${_formatDuration(_position)} / ${_formatDuration(_duration)}'
+                          : 'Waiting for stream',
+                      progress: progress,
+                      subtitlesVisible: _subtitlesVisible,
+                      externalSubtitleName: _externalSubtitleName,
+                      audioTrackCount: _audioTracks.length,
+                      subtitleTrackCount: _subtitleTracks.length,
+                      landscapeLocked: _landscapeLocked,
+                      hasFiles: _files.length > 1,
+                      hasStreamUrl: hasStreamUrl,
+                      saving: _saving,
+                      onTap: () {
+                        setState(() {
+                          _showControls = !_showControls;
+                        });
+                      },
+                      onPlayPause: _togglePlayPause,
+                      onBack10: () => _seekRelative(-10),
+                      onForward10: () => _seekRelative(10),
+                      onSeek: !canControl
+                          ? null
+                          : (double value) async {
+                              final int millis =
+                                  (_duration.inMilliseconds * value).round();
+                              await controller
+                                  .seekTo(Duration(milliseconds: millis));
+                            },
+                      onChooseFile: () => _showEpisodesSheet(
+                        seasonGroups: seasonGroups,
+                        unparsedVideoIndices: unparsedVideoIndices,
+                        extras: extras,
+                        movieLikeFiles: movieLikeFiles,
+                      ),
+                      onOpenExternal: _openExternalPlayer,
+                      onCopyLink: _copyStreamUrl,
+                      onRetry: _retryActiveFile,
+                      onAudio: _showAudioSheet,
+                      onSubtitle: _showSubtitleSheet,
+                      onOrientation: _toggleOrientation,
+                      onSaveProgress: () async {
+                        final ScaffoldMessengerState messenger =
+                            ScaffoldMessenger.of(context);
+                        await _persistProgress();
+                        if (!mounted) {
+                          return;
+                        }
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content:
+                                Text('Progress saved to Continue Watching.'),
+                          ),
+                        );
+                      },
+                    ),
+                    if (_files.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 12),
+                      _MiniLibraryCard(
+                        activeTitle: displayTitle,
+                        fileCount: _files.length,
+                        episodeCount:
+                            seasonGroups.fold<int>(0, (int total, group) {
+                          return total + group.episodes.length;
+                        }),
+                        onOpen: () => _showEpisodesSheet(
+                          seasonGroups: seasonGroups,
+                          unparsedVideoIndices: unparsedVideoIndices,
+                          extras: extras,
+                          movieLikeFiles: movieLikeFiles,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ],
-          ),
         ),
       ),
     );
@@ -1095,6 +1184,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
 class _PlayerStage extends StatelessWidget {
   const _PlayerStage({
+    required this.height,
     required this.controller,
     required this.initialized,
     required this.loading,
@@ -1132,6 +1222,7 @@ class _PlayerStage extends StatelessWidget {
     required this.onSaveProgress,
   });
 
+  final double height;
   final VideoPlayerController? controller;
   final bool initialized;
   final bool loading;
@@ -1178,266 +1269,268 @@ class _PlayerStage extends StatelessWidget {
           caseSensitive: false,
         ).hasMatch(file.displayName);
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: AspectRatio(
-        aspectRatio: 16 / 9,
-        child: GestureDetector(
-          onTap: onTap,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(color: Colors.black),
-            child: Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                if (initialized && activeController != null)
-                  FittedBox(
-                    fit: BoxFit.contain,
-                    child: SizedBox(
-                      width: activeController.value.size.width,
-                      height: activeController.value.size.height,
-                      child: VideoPlayer(activeController),
+    final Widget stage = GestureDetector(
+      onTap: onTap,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(color: Colors.black),
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            if (initialized && activeController != null)
+              FittedBox(
+                fit: BoxFit.contain,
+                child: SizedBox(
+                  width: activeController.value.size.width,
+                  height: activeController.value.size.height,
+                  child: VideoPlayer(activeController),
+                ),
+              ),
+            if (initialized && activeController != null && subtitlesVisible)
+              ClosedCaption(
+                text: activeController.value.caption.text,
+                textStyle: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  height: 1.28,
+                  fontWeight: FontWeight.w700,
+                  shadows: <Shadow>[
+                    Shadow(
+                      color: Colors.black,
+                      blurRadius: 6,
                     ),
+                  ],
+                ),
+              ),
+            if (loading)
+              const Center(
+                child: CircularProgressIndicator(color: AppColors.text),
+              ),
+            if (issue != null)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: _PlayerErrorPanel(
+                    issue: issue!,
+                    hasFiles: hasFiles,
+                    hasStreamUrl: hasStreamUrl,
+                    onChooseFile: onChooseFile,
+                    onOpenExternal: onOpenExternal,
+                    onCopyLink: onCopyLink,
+                    onRetry: onRetry,
                   ),
-                if (initialized && activeController != null && subtitlesVisible)
-                  ClosedCaption(
-                    text: activeController.value.caption.text,
-                    textStyle: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      height: 1.28,
-                      fontWeight: FontWeight.w700,
-                      shadows: <Shadow>[
-                        Shadow(
-                          color: Colors.black,
-                          blurRadius: 6,
-                        ),
+                ),
+              ),
+            if (showControls)
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[
+                        Colors.black.withOpacity(0.74),
+                        Colors.black.withOpacity(0.18),
+                        Colors.black.withOpacity(0.88),
                       ],
                     ),
                   ),
-                if (loading)
-                  const Center(
-                    child: CircularProgressIndicator(color: AppColors.text),
-                  ),
-                if (issue != null)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: _PlayerErrorPanel(
-                        issue: issue!,
-                        hasFiles: hasFiles,
-                        hasStreamUrl: hasStreamUrl,
-                        onChooseFile: onChooseFile,
-                        onOpenExternal: onOpenExternal,
-                        onCopyLink: onCopyLink,
-                        onRetry: onRetry,
-                      ),
-                    ),
-                  ),
-                if (showControls)
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: <Color>[
-                            Colors.black.withOpacity(0.74),
-                            Colors.black.withOpacity(0.18),
-                            Colors.black.withOpacity(0.88),
-                          ],
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      Text(
-                                        displayTitle,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w800,
-                                          height: 1.18,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Wrap(
-                                        spacing: 6,
-                                        runSpacing: 6,
-                                        children: <Widget>[
-                                          _PlayerPill(
-                                            icon: isPlaying
-                                                ? Icons.pause_rounded
-                                                : Icons.play_arrow_rounded,
-                                            label: isPlaying
-                                                ? 'Playing'
-                                                : 'Paused',
-                                          ),
-                                          if (isBuffering)
-                                            const _PlayerPill(
-                                              icon: Icons.sync_rounded,
-                                              label: 'Buffering',
-                                            ),
-                                          if (provider != null)
-                                            _PlayerPill(
-                                              icon: Icons.storage_outlined,
-                                              label: provider!,
-                                            ),
-                                          if (looksHevc)
-                                            const _PlayerPill(
-                                              icon: Icons.warning_amber_rounded,
-                                              label: 'HEVC/x265',
-                                            ),
-                                          if ((torrentHash ?? '').isNotEmpty)
-                                            _PlayerPill(
-                                              icon: Icons.tag_outlined,
-                                              label: torrentHash!.substring(
-                                                0,
-                                                torrentHash!.length > 8
-                                                    ? 8
-                                                    : torrentHash!.length,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                _MiniIconButton(
-                                  icon: landscapeLocked
-                                      ? Icons.screen_lock_rotation_rounded
-                                      : Icons.screen_rotation_alt_rounded,
-                                  onTap: onOrientation,
-                                ),
-                              ],
-                            ),
-                            const Spacer(),
-                            if (initialized && activeController != null)
-                              Center(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: <Widget>[
-                                    _OverlayControlButton(
-                                      icon: Icons.replay_10_rounded,
-                                      onTap: onBack10,
-                                    ),
-                                    const SizedBox(width: 18),
-                                    _OverlayControlButton(
-                                      icon: isPlaying
-                                          ? Icons.pause_rounded
-                                          : Icons.play_arrow_rounded,
-                                      size: 66,
-                                      onTap: onPlayPause,
-                                    ),
-                                    const SizedBox(width: 18),
-                                    _OverlayControlButton(
-                                      icon: Icons.forward_10_rounded,
-                                      onTap: onForward10,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            const Spacer(),
-                            Row(
-                              children: <Widget>[
-                                Text(
-                                  positionLabel,
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const Spacer(),
-                                if ((externalSubtitleName ?? '').isNotEmpty)
-                                  Flexible(
-                                    child: Text(
-                                      externalSubtitleName!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 10,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            SliderTheme(
-                              data: SliderTheme.of(context).copyWith(
-                                trackHeight: 3,
-                                thumbShape: const RoundSliderThumbShape(
-                                  enabledThumbRadius: 6,
-                                ),
-                              ),
-                              child: Slider(
-                                value: progress,
-                                onChanged: onSeek,
-                                activeColor: AppColors.accent,
-                                inactiveColor: Colors.white24,
-                              ),
-                            ),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
-                                  _BottomToolButton(
-                                    icon: Icons.playlist_play_rounded,
-                                    label: hasFiles ? 'Episodes' : 'Files',
-                                    onTap: onChooseFile,
-                                  ),
-                                  _BottomToolButton(
-                                    icon: Icons.subtitles_rounded,
-                                    label: subtitleTrackCount > 0
-                                        ? 'Subs $subtitleTrackCount'
-                                        : 'Subs',
-                                    active: subtitlesVisible,
-                                    onTap: onSubtitle,
-                                  ),
-                                  _BottomToolButton(
-                                    icon: Icons.graphic_eq_rounded,
-                                    label: audioTrackCount > 0
-                                        ? 'Audio $audioTrackCount'
-                                        : 'Audio',
-                                    onTap: onAudio,
-                                  ),
-                                  if (hasStreamUrl)
-                                    _BottomToolButton(
-                                      icon: Icons.open_in_new_rounded,
-                                      label: 'External',
-                                      onTap: onOpenExternal,
+                                  Text(
+                                    displayTitle,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.18,
                                     ),
-                                  _BottomToolButton(
-                                    icon: saving
-                                        ? Icons.hourglass_top_rounded
-                                        : Icons.bookmark_add_outlined,
-                                    label: saving ? 'Saving' : 'Save',
-                                    onTap: onSaveProgress,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: <Widget>[
+                                      _PlayerPill(
+                                        icon: isPlaying
+                                            ? Icons.pause_rounded
+                                            : Icons.play_arrow_rounded,
+                                        label: isPlaying ? 'Playing' : 'Paused',
+                                      ),
+                                      if (isBuffering)
+                                        const _PlayerPill(
+                                          icon: Icons.sync_rounded,
+                                          label: 'Buffering',
+                                        ),
+                                      if (provider != null)
+                                        _PlayerPill(
+                                          icon: Icons.storage_outlined,
+                                          label: provider!,
+                                        ),
+                                      if (looksHevc)
+                                        const _PlayerPill(
+                                          icon: Icons.warning_amber_rounded,
+                                          label: 'HEVC/x265',
+                                        ),
+                                      if ((torrentHash ?? '').isNotEmpty)
+                                        _PlayerPill(
+                                          icon: Icons.tag_outlined,
+                                          label: torrentHash!.substring(
+                                            0,
+                                            torrentHash!.length > 8
+                                                ? 8
+                                                : torrentHash!.length,
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ],
                               ),
                             ),
+                            _MiniIconButton(
+                              icon: landscapeLocked
+                                  ? Icons.screen_lock_rotation_rounded
+                                  : Icons.screen_rotation_alt_rounded,
+                              onTap: onOrientation,
+                            ),
                           ],
                         ),
-                      ),
+                        const Spacer(),
+                        if (initialized && activeController != null)
+                          Center(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                _OverlayControlButton(
+                                  icon: Icons.replay_10_rounded,
+                                  onTap: onBack10,
+                                ),
+                                const SizedBox(width: 18),
+                                _OverlayControlButton(
+                                  icon: isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  size: 66,
+                                  onTap: onPlayPause,
+                                ),
+                                const SizedBox(width: 18),
+                                _OverlayControlButton(
+                                  icon: Icons.forward_10_rounded,
+                                  onTap: onForward10,
+                                ),
+                              ],
+                            ),
+                          ),
+                        const Spacer(),
+                        Row(
+                          children: <Widget>[
+                            Text(
+                              positionLabel,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const Spacer(),
+                            if ((externalSubtitleName ?? '').isNotEmpty)
+                              Flexible(
+                                child: Text(
+                                  externalSubtitleName!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 3,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 6,
+                            ),
+                          ),
+                          child: Slider(
+                            value: progress,
+                            onChanged: onSeek,
+                            activeColor: AppColors.accent,
+                            inactiveColor: Colors.white24,
+                          ),
+                        ),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: <Widget>[
+                              _BottomToolButton(
+                                icon: Icons.playlist_play_rounded,
+                                label: hasFiles ? 'Episodes' : 'Files',
+                                onTap: onChooseFile,
+                              ),
+                              _BottomToolButton(
+                                icon: Icons.subtitles_rounded,
+                                label: subtitleTrackCount > 0
+                                    ? 'Subs $subtitleTrackCount'
+                                    : 'Subs',
+                                active: subtitlesVisible,
+                                onTap: onSubtitle,
+                              ),
+                              _BottomToolButton(
+                                icon: Icons.graphic_eq_rounded,
+                                label: audioTrackCount > 0
+                                    ? 'Audio $audioTrackCount'
+                                    : 'Audio',
+                                onTap: onAudio,
+                              ),
+                              if (hasStreamUrl)
+                                _BottomToolButton(
+                                  icon: Icons.open_in_new_rounded,
+                                  label: 'External',
+                                  onTap: onOpenExternal,
+                                ),
+                              _BottomToolButton(
+                                icon: saving
+                                    ? Icons.hourglass_top_rounded
+                                    : Icons.bookmark_add_outlined,
+                                label: saving ? 'Saving' : 'Save',
+                                onTap: onSaveProgress,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-              ],
-            ),
-          ),
+                ),
+              ),
+          ],
         ),
       ),
+    );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: height.isInfinite
+          ? SizedBox.expand(child: stage)
+          : SizedBox(
+              height: height,
+              width: double.infinity,
+              child: stage,
+            ),
     );
   }
 }

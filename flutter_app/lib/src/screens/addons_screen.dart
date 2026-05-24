@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../models/torbox_models.dart';
-import '../services/app_settings_repository.dart';
 import '../services/stremio_addons_service.dart';
 import '../theme/app_colors.dart';
 
@@ -9,12 +8,9 @@ class AddonsScreen extends StatefulWidget {
   AddonsScreen({
     super.key,
     StremioAddonsService? addonsService,
-    AppSettingsRepository? settingsRepository,
-  })  : addonsService = addonsService ?? StremioAddonsService(),
-        settingsRepository = settingsRepository ?? AppSettingsRepository();
+  }) : addonsService = addonsService ?? StremioAddonsService();
 
   final StremioAddonsService addonsService;
-  final AppSettingsRepository settingsRepository;
 
   @override
   State<AddonsScreen> createState() => _AddonsScreenState();
@@ -25,10 +21,6 @@ class _AddonsScreenState extends State<AddonsScreen> {
   List<AddonManifest> _addons = const <AddonManifest>[];
   bool _loading = true;
   bool _installing = false;
-  bool _useAddons = false;
-
-  int get _streamAddonCount =>
-      _addons.where((AddonManifest addon) => addon.hasStreamResource).length;
 
   @override
   void initState() {
@@ -47,30 +39,15 @@ class _AddonsScreenState extends State<AddonsScreen> {
       _loading = true;
     });
 
-    final List<dynamic> results = await Future.wait<dynamic>(<Future<dynamic>>[
-      widget.addonsService.getInstalledAddons(),
-      widget.settingsRepository.getUseAddons(),
-    ]);
-
+    final List<AddonManifest> addons =
+        await widget.addonsService.getInstalledAddons();
     if (!mounted) {
       return;
     }
 
     setState(() {
-      _addons = results[0] as List<AddonManifest>;
-      _useAddons = results[1] as bool;
+      _addons = addons;
       _loading = false;
-    });
-  }
-
-  Future<void> _toggleUseAddons(bool value) async {
-    await widget.settingsRepository.saveUseAddons(value);
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _useAddons = value;
     });
   }
 
@@ -152,53 +129,10 @@ class _AddonsScreenState extends State<AddonsScreen> {
         child: RefreshIndicator(
           onRefresh: _load,
           child: ListView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
             children: <Widget>[
               Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            _useAddons
-                                ? 'Using Torrentio + addons'
-                                : 'Using Torrentio only',
-                            style: const TextStyle(
-                              color: AppColors.text,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _useAddons
-                                ? 'Torboxers will merge ${_streamAddonCount == 0 ? 'no installed stream addons yet' : '$_streamAddonCount stream addon${_streamAddonCount == 1 ? '' : 's'}'} into search.'
-                                : 'Only the built-in Torrentio path is active right now.',
-                            style: const TextStyle(
-                              color: AppColors.textMuted,
-                              height: 1.45,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: _useAddons,
-                      onChanged: _toggleUseAddons,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: AppColors.cardBackground,
                   borderRadius: BorderRadius.circular(20),
@@ -211,15 +145,7 @@ class _AddonsScreenState extends State<AddonsScreen> {
                       style: TextStyle(
                         color: AppColors.text,
                         fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Paste a full Stremio manifest URL. `https://.../manifest.json`, configure links with query params, and `stremio://...` links are all supported.',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        height: 1.45,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -227,7 +153,7 @@ class _AddonsScreenState extends State<AddonsScreen> {
                       controller: _urlController,
                       style: const TextStyle(color: AppColors.text),
                       decoration: InputDecoration(
-                        hintText: 'https://.../manifest.json or stremio://...',
+                        hintText: 'Manifest URL or stremio:// link',
                         hintStyle: const TextStyle(color: AppColors.textSubtle),
                         filled: true,
                         fillColor: Colors.white.withOpacity(0.04),
@@ -250,40 +176,6 @@ class _AddonsScreenState extends State<AddonsScreen> {
                 ),
               ),
               const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: _OverviewMetric(
-                        value: _addons.length.toString(),
-                        label: 'Installed',
-                      ),
-                    ),
-                    Expanded(
-                      child: _OverviewMetric(
-                        value: _streamAddonCount.toString(),
-                        label: 'Stream ready',
-                      ),
-                    ),
-                    Expanded(
-                      child: _OverviewMetric(
-                        value: _addons
-                            .where((AddonManifest addon) =>
-                                addon.configurationRequired)
-                            .length
-                            .toString(),
-                        label: 'Need setup',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
               if (_loading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 60),
@@ -297,95 +189,11 @@ class _AddonsScreenState extends State<AddonsScreen> {
                 ..._addons.map(
                   (AddonManifest addon) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBackground,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: Text(
-                                  addon.name,
-                                  style: const TextStyle(
-                                    color: AppColors.text,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              Switch(
-                                value: addon.enabled,
-                                onChanged: (bool value) =>
-                                    _toggleAddon(addon, value),
-                              ),
-                              IconButton(
-                                onPressed: () => _refreshAddon(addon),
-                                icon: const Icon(
-                                  Icons.refresh,
-                                  color: AppColors.textMuted,
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: () => _removeAddon(addon),
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  color: Color(0xFFFCA5A5),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if ((addon.description ?? '').isNotEmpty) ...<Widget>[
-                            Text(
-                              addon.description!,
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                height: 1.45,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: <Widget>[
-                              _AddonMetaChip(label: addon.version),
-                              if (addon.hasStreamResource)
-                                const _AddonMetaChip(label: 'Streams'),
-                              if (addon.hasSubtitleResource)
-                                const _AddonMetaChip(label: 'Subtitles'),
-                              _AddonMetaChip(
-                                label: addon.enabled ? 'Enabled' : 'Disabled',
-                              ),
-                              _AddonMetaChip(
-                                label: addon.resources.isEmpty
-                                    ? '0 resources'
-                                    : '${addon.resources.length} resources',
-                              ),
-                              if (addon.supportedMediaTypes.isNotEmpty)
-                                _AddonMetaChip(
-                                  label: addon.supportedMediaTypes.join(' • '),
-                                ),
-                              if (addon.configurable)
-                                const _AddonMetaChip(label: 'Configurable'),
-                              if (addon.configurationRequired)
-                                const _AddonMetaChip(label: 'Needs setup'),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            addon.originalUrl,
-                            style: const TextStyle(
-                              color: AppColors.textSubtle,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
+                    child: _AddonCard(
+                      addon: addon,
+                      onToggle: (bool value) => _toggleAddon(addon, value),
+                      onRefresh: () => _refreshAddon(addon),
+                      onDelete: () => _removeAddon(addon),
                     ),
                   ),
                 ),
@@ -397,62 +205,108 @@ class _AddonsScreenState extends State<AddonsScreen> {
   }
 }
 
-class _AddonMetaChip extends StatelessWidget {
-  const _AddonMetaChip({required this.label});
+class _AddonCard extends StatelessWidget {
+  const _AddonCard({
+    required this.addon,
+    required this.onToggle,
+    required this.onRefresh,
+    required this.onDelete,
+  });
 
-  final String label;
+  final AddonManifest addon;
+  final ValueChanged<bool> onToggle;
+  final VoidCallback onRefresh;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(999),
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.text,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
+      child: Row(
+        children: <Widget>[
+          _AddonLogo(addon: addon),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  addon.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  addon.hasStreamResource ? 'Streams ready' : 'No streams',
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: addon.enabled,
+            onChanged: onToggle,
+          ),
+          IconButton(
+            onPressed: onRefresh,
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.text),
+          ),
+          IconButton(
+            onPressed: onDelete,
+            icon: const Icon(
+              Icons.delete_outline_rounded,
+              color: Color(0xFFFCA5A5),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _OverviewMetric extends StatelessWidget {
-  const _OverviewMetric({
-    required this.value,
-    required this.label,
-  });
+class _AddonLogo extends StatelessWidget {
+  const _AddonLogo({required this.addon});
 
-  final String value;
-  final String label;
+  final AddonManifest addon;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(
-          value,
-          style: const TextStyle(
-            color: AppColors.text,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 12,
-          ),
-        ),
-      ],
+    final String? logo = addon.logo;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 48,
+        height: 48,
+        color: Colors.white.withOpacity(0.08),
+        child: logo == null || logo.isEmpty
+            ? const Icon(Icons.extension_rounded, color: AppColors.text)
+            : Image.network(
+                logo,
+                fit: BoxFit.cover,
+                errorBuilder: (
+                  BuildContext context,
+                  Object error,
+                  StackTrace? stackTrace,
+                ) {
+                  return const Icon(
+                    Icons.extension_rounded,
+                    color: AppColors.text,
+                  );
+                },
+              ),
+      ),
     );
   }
 }
@@ -482,7 +336,7 @@ class _EmptyAddonsState extends StatelessWidget {
           ),
           SizedBox(height: 8),
           Text(
-            'Paste a Stremio manifest URL above and the Torboxers search tab can merge those streams when addon mode is enabled.',
+            'Install Comet, MediaFusion, or any Stremio stream addon to power Streamed sources.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textMuted, height: 1.45),
           ),

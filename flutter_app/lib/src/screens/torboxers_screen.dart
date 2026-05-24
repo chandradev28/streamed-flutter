@@ -566,6 +566,17 @@ class _TorboxersScreenState extends State<TorboxersScreen> {
       return;
     }
 
+    if (!_settings.resolvePlayableLinksEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Enable Connected Services > Resolve playable links to play torrent sources.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final String preferred = _preferredProviderFor(source);
     if (preferred == 'realdebrid') {
       final bool played = await _playViaRealDebrid(source);

@@ -4,12 +4,60 @@ class AppSettings {
     this.realDebridApiKey,
     this.preferredDebridProvider = 'torbox',
     this.useAddons = false,
+    this.cloudLibraryEnabled = false,
+    this.resolvePlayableLinksEnabled = true,
+    this.tmdbEnrichmentEnabled = true,
+    this.tmdbApiKey,
+    this.tmdbLanguage = 'en-US',
+    this.tmdbTrailersEnabled = true,
+    this.tmdbArtworkEnabled = true,
+    this.tmdbBasicInfoEnabled = true,
+    this.tmdbDetailsEnabled = true,
+    this.tmdbCreditsEnabled = true,
+    this.tmdbProductionsEnabled = true,
+    this.tmdbNetworksEnabled = true,
+    this.tmdbEpisodesEnabled = true,
+    this.tmdbSeasonPostersEnabled = true,
+    this.tmdbMoreLikeThisEnabled = true,
+    this.mdbListRatingsEnabled = false,
+    this.mdbListApiKey,
+    this.mdbListImdbEnabled = true,
+    this.mdbListTmdbEnabled = true,
+    this.mdbListRottenTomatoesEnabled = true,
+    this.mdbListMetacriticEnabled = true,
+    this.mdbListTraktEnabled = true,
+    this.mdbListLetterboxdEnabled = true,
+    this.mdbListAudienceScoreEnabled = true,
   });
 
   final String? torBoxApiKey;
   final String? realDebridApiKey;
   final String preferredDebridProvider;
   final bool useAddons;
+  final bool cloudLibraryEnabled;
+  final bool resolvePlayableLinksEnabled;
+  final bool tmdbEnrichmentEnabled;
+  final String? tmdbApiKey;
+  final String tmdbLanguage;
+  final bool tmdbTrailersEnabled;
+  final bool tmdbArtworkEnabled;
+  final bool tmdbBasicInfoEnabled;
+  final bool tmdbDetailsEnabled;
+  final bool tmdbCreditsEnabled;
+  final bool tmdbProductionsEnabled;
+  final bool tmdbNetworksEnabled;
+  final bool tmdbEpisodesEnabled;
+  final bool tmdbSeasonPostersEnabled;
+  final bool tmdbMoreLikeThisEnabled;
+  final bool mdbListRatingsEnabled;
+  final String? mdbListApiKey;
+  final bool mdbListImdbEnabled;
+  final bool mdbListTmdbEnabled;
+  final bool mdbListRottenTomatoesEnabled;
+  final bool mdbListMetacriticEnabled;
+  final bool mdbListTraktEnabled;
+  final bool mdbListLetterboxdEnabled;
+  final bool mdbListAudienceScoreEnabled;
 
   AppSettings copyWith({
     String? torBoxApiKey,
@@ -18,6 +66,32 @@ class AppSettings {
     bool clearRealDebridApiKey = false,
     String? preferredDebridProvider,
     bool? useAddons,
+    bool? cloudLibraryEnabled,
+    bool? resolvePlayableLinksEnabled,
+    bool? tmdbEnrichmentEnabled,
+    String? tmdbApiKey,
+    bool clearTmdbApiKey = false,
+    String? tmdbLanguage,
+    bool? tmdbTrailersEnabled,
+    bool? tmdbArtworkEnabled,
+    bool? tmdbBasicInfoEnabled,
+    bool? tmdbDetailsEnabled,
+    bool? tmdbCreditsEnabled,
+    bool? tmdbProductionsEnabled,
+    bool? tmdbNetworksEnabled,
+    bool? tmdbEpisodesEnabled,
+    bool? tmdbSeasonPostersEnabled,
+    bool? tmdbMoreLikeThisEnabled,
+    bool? mdbListRatingsEnabled,
+    String? mdbListApiKey,
+    bool clearMdbListApiKey = false,
+    bool? mdbListImdbEnabled,
+    bool? mdbListTmdbEnabled,
+    bool? mdbListRottenTomatoesEnabled,
+    bool? mdbListMetacriticEnabled,
+    bool? mdbListTraktEnabled,
+    bool? mdbListLetterboxdEnabled,
+    bool? mdbListAudienceScoreEnabled,
   }) {
     return AppSettings(
       torBoxApiKey: clearApiKey ? null : (torBoxApiKey ?? this.torBoxApiKey),
@@ -27,6 +101,41 @@ class AppSettings {
       preferredDebridProvider:
           preferredDebridProvider ?? this.preferredDebridProvider,
       useAddons: useAddons ?? this.useAddons,
+      cloudLibraryEnabled: cloudLibraryEnabled ?? this.cloudLibraryEnabled,
+      resolvePlayableLinksEnabled:
+          resolvePlayableLinksEnabled ?? this.resolvePlayableLinksEnabled,
+      tmdbEnrichmentEnabled:
+          tmdbEnrichmentEnabled ?? this.tmdbEnrichmentEnabled,
+      tmdbApiKey: clearTmdbApiKey ? null : (tmdbApiKey ?? this.tmdbApiKey),
+      tmdbLanguage: tmdbLanguage ?? this.tmdbLanguage,
+      tmdbTrailersEnabled: tmdbTrailersEnabled ?? this.tmdbTrailersEnabled,
+      tmdbArtworkEnabled: tmdbArtworkEnabled ?? this.tmdbArtworkEnabled,
+      tmdbBasicInfoEnabled: tmdbBasicInfoEnabled ?? this.tmdbBasicInfoEnabled,
+      tmdbDetailsEnabled: tmdbDetailsEnabled ?? this.tmdbDetailsEnabled,
+      tmdbCreditsEnabled: tmdbCreditsEnabled ?? this.tmdbCreditsEnabled,
+      tmdbProductionsEnabled:
+          tmdbProductionsEnabled ?? this.tmdbProductionsEnabled,
+      tmdbNetworksEnabled: tmdbNetworksEnabled ?? this.tmdbNetworksEnabled,
+      tmdbEpisodesEnabled: tmdbEpisodesEnabled ?? this.tmdbEpisodesEnabled,
+      tmdbSeasonPostersEnabled:
+          tmdbSeasonPostersEnabled ?? this.tmdbSeasonPostersEnabled,
+      tmdbMoreLikeThisEnabled:
+          tmdbMoreLikeThisEnabled ?? this.tmdbMoreLikeThisEnabled,
+      mdbListRatingsEnabled:
+          mdbListRatingsEnabled ?? this.mdbListRatingsEnabled,
+      mdbListApiKey:
+          clearMdbListApiKey ? null : (mdbListApiKey ?? this.mdbListApiKey),
+      mdbListImdbEnabled: mdbListImdbEnabled ?? this.mdbListImdbEnabled,
+      mdbListTmdbEnabled: mdbListTmdbEnabled ?? this.mdbListTmdbEnabled,
+      mdbListRottenTomatoesEnabled:
+          mdbListRottenTomatoesEnabled ?? this.mdbListRottenTomatoesEnabled,
+      mdbListMetacriticEnabled:
+          mdbListMetacriticEnabled ?? this.mdbListMetacriticEnabled,
+      mdbListTraktEnabled: mdbListTraktEnabled ?? this.mdbListTraktEnabled,
+      mdbListLetterboxdEnabled:
+          mdbListLetterboxdEnabled ?? this.mdbListLetterboxdEnabled,
+      mdbListAudienceScoreEnabled:
+          mdbListAudienceScoreEnabled ?? this.mdbListAudienceScoreEnabled,
     );
   }
 
@@ -37,6 +146,36 @@ class AppSettings {
       preferredDebridProvider:
           json['preferredDebridProvider'] as String? ?? 'torbox',
       useAddons: json['useAddons'] as bool? ?? false,
+      cloudLibraryEnabled: json['cloudLibraryEnabled'] as bool? ?? false,
+      resolvePlayableLinksEnabled:
+          json['resolvePlayableLinksEnabled'] as bool? ?? true,
+      tmdbEnrichmentEnabled: json['tmdbEnrichmentEnabled'] as bool? ?? true,
+      tmdbApiKey: json['tmdbApiKey'] as String?,
+      tmdbLanguage: json['tmdbLanguage'] as String? ?? 'en-US',
+      tmdbTrailersEnabled: json['tmdbTrailersEnabled'] as bool? ?? true,
+      tmdbArtworkEnabled: json['tmdbArtworkEnabled'] as bool? ?? true,
+      tmdbBasicInfoEnabled: json['tmdbBasicInfoEnabled'] as bool? ?? true,
+      tmdbDetailsEnabled: json['tmdbDetailsEnabled'] as bool? ?? true,
+      tmdbCreditsEnabled: json['tmdbCreditsEnabled'] as bool? ?? true,
+      tmdbProductionsEnabled: json['tmdbProductionsEnabled'] as bool? ?? true,
+      tmdbNetworksEnabled: json['tmdbNetworksEnabled'] as bool? ?? true,
+      tmdbEpisodesEnabled: json['tmdbEpisodesEnabled'] as bool? ?? true,
+      tmdbSeasonPostersEnabled:
+          json['tmdbSeasonPostersEnabled'] as bool? ?? true,
+      tmdbMoreLikeThisEnabled: json['tmdbMoreLikeThisEnabled'] as bool? ?? true,
+      mdbListRatingsEnabled: json['mdbListRatingsEnabled'] as bool? ?? false,
+      mdbListApiKey: json['mdbListApiKey'] as String?,
+      mdbListImdbEnabled: json['mdbListImdbEnabled'] as bool? ?? true,
+      mdbListTmdbEnabled: json['mdbListTmdbEnabled'] as bool? ?? true,
+      mdbListRottenTomatoesEnabled:
+          json['mdbListRottenTomatoesEnabled'] as bool? ?? true,
+      mdbListMetacriticEnabled:
+          json['mdbListMetacriticEnabled'] as bool? ?? true,
+      mdbListTraktEnabled: json['mdbListTraktEnabled'] as bool? ?? true,
+      mdbListLetterboxdEnabled:
+          json['mdbListLetterboxdEnabled'] as bool? ?? true,
+      mdbListAudienceScoreEnabled:
+          json['mdbListAudienceScoreEnabled'] as bool? ?? true,
     );
   }
 
@@ -46,6 +185,30 @@ class AppSettings {
       'realDebridApiKey': realDebridApiKey,
       'preferredDebridProvider': preferredDebridProvider,
       'useAddons': useAddons,
+      'cloudLibraryEnabled': cloudLibraryEnabled,
+      'resolvePlayableLinksEnabled': resolvePlayableLinksEnabled,
+      'tmdbEnrichmentEnabled': tmdbEnrichmentEnabled,
+      'tmdbApiKey': tmdbApiKey,
+      'tmdbLanguage': tmdbLanguage,
+      'tmdbTrailersEnabled': tmdbTrailersEnabled,
+      'tmdbArtworkEnabled': tmdbArtworkEnabled,
+      'tmdbBasicInfoEnabled': tmdbBasicInfoEnabled,
+      'tmdbDetailsEnabled': tmdbDetailsEnabled,
+      'tmdbCreditsEnabled': tmdbCreditsEnabled,
+      'tmdbProductionsEnabled': tmdbProductionsEnabled,
+      'tmdbNetworksEnabled': tmdbNetworksEnabled,
+      'tmdbEpisodesEnabled': tmdbEpisodesEnabled,
+      'tmdbSeasonPostersEnabled': tmdbSeasonPostersEnabled,
+      'tmdbMoreLikeThisEnabled': tmdbMoreLikeThisEnabled,
+      'mdbListRatingsEnabled': mdbListRatingsEnabled,
+      'mdbListApiKey': mdbListApiKey,
+      'mdbListImdbEnabled': mdbListImdbEnabled,
+      'mdbListTmdbEnabled': mdbListTmdbEnabled,
+      'mdbListRottenTomatoesEnabled': mdbListRottenTomatoesEnabled,
+      'mdbListMetacriticEnabled': mdbListMetacriticEnabled,
+      'mdbListTraktEnabled': mdbListTraktEnabled,
+      'mdbListLetterboxdEnabled': mdbListLetterboxdEnabled,
+      'mdbListAudienceScoreEnabled': mdbListAudienceScoreEnabled,
     };
   }
 }

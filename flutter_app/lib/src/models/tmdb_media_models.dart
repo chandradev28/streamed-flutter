@@ -116,6 +116,72 @@ class NetworkItem {
   }
 }
 
+class ProductionCompanyItem {
+  const ProductionCompanyItem({
+    required this.id,
+    required this.name,
+    required this.logoPath,
+  });
+
+  final int id;
+  final String name;
+  final String? logoPath;
+
+  factory ProductionCompanyItem.fromJson(Map<String, dynamic> json) {
+    return ProductionCompanyItem(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: (json['name'] as String?) ?? '',
+      logoPath: json['logo_path'] as String?,
+    );
+  }
+}
+
+class MediaTrailer {
+  const MediaTrailer({
+    required this.name,
+    required this.key,
+    required this.site,
+    required this.type,
+  });
+
+  final String name;
+  final String key;
+  final String site;
+  final String type;
+
+  Uri? get url {
+    if (site.toLowerCase() == 'youtube' && key.isNotEmpty) {
+      return Uri.parse('https://www.youtube.com/watch?v=$key');
+    }
+    return null;
+  }
+
+  factory MediaTrailer.fromJson(Map<String, dynamic> json) {
+    return MediaTrailer(
+      name: (json['name'] as String?) ?? 'Trailer',
+      key: (json['key'] as String?) ?? '',
+      site: (json['site'] as String?) ?? '',
+      type: (json['type'] as String?) ?? '',
+    );
+  }
+}
+
+class ExternalRating {
+  const ExternalRating({
+    required this.source,
+    required this.label,
+    required this.score,
+    this.votes,
+    this.normalizedScore,
+  });
+
+  final String source;
+  final String label;
+  final String score;
+  final int? votes;
+  final double? normalizedScore;
+}
+
 class EpisodeItem {
   const EpisodeItem({
     required this.id,
@@ -170,6 +236,11 @@ class MediaDetail {
     required this.imdbId,
     required this.cast,
     required this.similarItems,
+    this.productionCompanies = const <ProductionCompanyItem>[],
+    this.trailers = const <MediaTrailer>[],
+    this.originalLanguage,
+    this.status,
+    this.country,
   });
 
   final int id;
@@ -186,15 +257,21 @@ class MediaDetail {
   final List<SeasonSummary> seasons;
   final int numberOfSeasons;
   final List<NetworkItem> networks;
+  final List<ProductionCompanyItem> productionCompanies;
   final String? imdbId;
   final List<CastItem> cast;
   final List<MediaSummary> similarItems;
+  final List<MediaTrailer> trailers;
+  final String? originalLanguage;
+  final String? status;
+  final String? country;
 
   factory MediaDetail.fromJson(
     Map<String, dynamic> json, {
     required String mediaType,
     List<CastItem> cast = const <CastItem>[],
     List<MediaSummary> similarItems = const <MediaSummary>[],
+    List<MediaTrailer> trailers = const <MediaTrailer>[],
   }) {
     final int runtime = mediaType == 'movie'
         ? (json['runtime'] as num?)?.toInt() ?? 0
@@ -230,9 +307,27 @@ class MediaDetail {
           .map((dynamic item) =>
               NetworkItem.fromJson(item as Map<String, dynamic>))
           .toList(growable: false),
+      productionCompanies: ((json['production_companies'] as List<dynamic>?) ??
+              const <dynamic>[])
+          .map((dynamic item) => ProductionCompanyItem.fromJson(
+                item as Map<String, dynamic>,
+              ))
+          .toList(growable: false),
       imdbId: json['imdb_id'] as String?,
       cast: cast,
       similarItems: similarItems,
+      trailers: trailers,
+      originalLanguage: json['original_language'] as String?,
+      status: json['status'] as String?,
+      country: (((json['production_countries'] as List<dynamic>?) ??
+                  const <dynamic>[])
+              .whereType<Map<String, dynamic>>()
+              .map((Map<String, dynamic> item) => item['name']?.toString())
+              .whereType<String>()
+              .where((String item) => item.trim().isNotEmpty)
+              .toList(growable: false)
+              .join(', '))
+          .trim(),
     );
   }
 }

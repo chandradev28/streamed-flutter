@@ -13,9 +13,10 @@ import 'profile_screen.dart';
 class HomeScreen extends StatefulWidget {
   HomeScreen({
     super.key,
-    this.mediaService = const TmdbMediaService(),
+    MediaCatalogService? mediaService,
     ContinueWatchingRepository? watchHistoryRepository,
-  }) : watchHistoryRepository =
+  })  : mediaService = mediaService ?? TmdbMediaService(),
+        watchHistoryRepository =
             watchHistoryRepository ?? WatchHistoryRepository();
 
   final MediaCatalogService mediaService;

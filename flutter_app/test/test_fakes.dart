@@ -168,6 +168,13 @@ class FakeAppSettingsRepository extends AppSettingsRepository {
   Future<bool> getUseAddons() async => _settings.useAddons;
 
   @override
+  Future<bool> getCloudLibraryEnabled() async => _settings.cloudLibraryEnabled;
+
+  @override
+  Future<bool> getResolvePlayableLinksEnabled() async =>
+      _settings.resolvePlayableLinksEnabled;
+
+  @override
   Future<AppSettings> loadSettings() async => _settings;
 
   @override
@@ -193,6 +200,36 @@ class FakeAppSettingsRepository extends AppSettingsRepository {
   @override
   Future<void> saveUseAddons(bool value) async {
     _settings = _settings.copyWith(useAddons: value);
+  }
+
+  @override
+  Future<void> saveCloudLibraryEnabled(bool value) async {
+    _settings = _settings.copyWith(cloudLibraryEnabled: value);
+  }
+
+  @override
+  Future<void> saveResolvePlayableLinksEnabled(bool value) async {
+    _settings = _settings.copyWith(resolvePlayableLinksEnabled: value);
+  }
+
+  @override
+  Future<void> saveTmdbApiKey(String apiKey) async {
+    _settings = _settings.copyWith(tmdbApiKey: apiKey);
+  }
+
+  @override
+  Future<void> clearTmdbApiKey() async {
+    _settings = _settings.copyWith(clearTmdbApiKey: true);
+  }
+
+  @override
+  Future<void> saveMdbListApiKey(String apiKey) async {
+    _settings = _settings.copyWith(mdbListApiKey: apiKey);
+  }
+
+  @override
+  Future<void> clearMdbListApiKey() async {
+    _settings = _settings.copyWith(clearMdbListApiKey: true);
   }
 }
 

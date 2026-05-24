@@ -65,6 +65,44 @@ class AppSettingsRepository {
     await saveSettings(settings.copyWith(useAddons: value));
   }
 
+  Future<bool> getCloudLibraryEnabled() async {
+    return (await loadSettings()).cloudLibraryEnabled;
+  }
+
+  Future<void> saveCloudLibraryEnabled(bool value) async {
+    final AppSettings settings = await loadSettings();
+    await saveSettings(settings.copyWith(cloudLibraryEnabled: value));
+  }
+
+  Future<bool> getResolvePlayableLinksEnabled() async {
+    return (await loadSettings()).resolvePlayableLinksEnabled;
+  }
+
+  Future<void> saveResolvePlayableLinksEnabled(bool value) async {
+    final AppSettings settings = await loadSettings();
+    await saveSettings(settings.copyWith(resolvePlayableLinksEnabled: value));
+  }
+
+  Future<void> saveTmdbApiKey(String apiKey) async {
+    final AppSettings settings = await loadSettings();
+    await saveSettings(settings.copyWith(tmdbApiKey: apiKey));
+  }
+
+  Future<void> clearTmdbApiKey() async {
+    final AppSettings settings = await loadSettings();
+    await saveSettings(settings.copyWith(clearTmdbApiKey: true));
+  }
+
+  Future<void> saveMdbListApiKey(String apiKey) async {
+    final AppSettings settings = await loadSettings();
+    await saveSettings(settings.copyWith(mdbListApiKey: apiKey));
+  }
+
+  Future<void> clearMdbListApiKey() async {
+    final AppSettings settings = await loadSettings();
+    await saveSettings(settings.copyWith(clearMdbListApiKey: true));
+  }
+
   Future<Map<String, dynamic>> _readMap() async {
     final file = await _store.file();
     if (!await file.exists()) {

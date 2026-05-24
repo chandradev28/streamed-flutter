@@ -147,29 +147,14 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
         });
       }
 
-      final List<StreamSource> indexerResults =
-          await widget.streamCatalogService.getBuiltInStreams(
-        imdbId: widget.imdbId,
-        mediaType: widget.mediaType,
-        seasonNumber: widget.seasonNumber,
-        episodeNumber: widget.episodeNumber,
+      final bool hasEnabledStreamAddon = addons.any(
+        (AddonManifest addon) => addon.enabled && addon.hasStreamResource,
       );
-      for (final StreamSource item in indexerResults) {
-        if (seen.add(item.id)) {
-          merged.add(item);
-        }
+      if (!hasEnabledStreamAddon) {
+        _message = 'Install and enable a stream addon to search Streamed.';
       }
-      sourceCounts['Torrentio'] = indexerResults.length;
 
-      if (_settings.useAddons) {
-        final bool hasEnabledStreamAddon = addons.any(
-          (AddonManifest addon) => addon.enabled && addon.hasStreamResource,
-        );
-        if (!hasEnabledStreamAddon) {
-          _message =
-              'Addons mode is enabled, but no installed addon exposes stream resources yet.';
-        }
-
+      if (hasEnabledStreamAddon) {
         final String streamId = widget.mediaType == 'tv'
             ? '${widget.imdbId}:${widget.seasonNumber ?? 1}:${widget.episodeNumber ?? 1}'
             : widget.imdbId;
@@ -205,10 +190,10 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
         }
         if (engineFallback.streams.isNotEmpty) {
           _message =
-              'Torrentio had no TB+ matches, so Streamed used cached Torboxers engine results.';
+              'No addon streams came back, so Streamed used cached Torboxers engine results.';
         } else {
           _message ??=
-              'No TB+ cached sources found from Torrentio or imported Torboxers engines.';
+              'No addon streams or cached Torboxers engine results found.';
         }
       }
 
@@ -271,6 +256,17 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
     }
 
     if (!source.hasTorrentSource) {
+      return;
+    }
+
+    if (!_settings.resolvePlayableLinksEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Enable Connected Services > Resolve playable links to play torrent sources.',
+          ),
+        ),
+      );
       return;
     }
 
@@ -506,13 +502,9 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: <Widget>[
-                      const _StreamedHeaderChip(label: 'Torrentio'),
-                      _StreamedHeaderChip(
-                        label: _settings.useAddons ? 'Addons on' : 'Addons off',
-                      ),
                       _StreamedHeaderChip(
                         label:
-                            '${_addons.where((AddonManifest addon) => addon.enabled && addon.hasStreamResource).length} stream addons',
+                            '${_addons.where((AddonManifest addon) => addon.enabled && addon.hasStreamResource).length} enabled addons',
                       ),
                       if (_isEpisodeContext)
                         _StreamedHeaderChip(
