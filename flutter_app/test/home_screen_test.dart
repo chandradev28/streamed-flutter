@@ -45,7 +45,6 @@ void main() {
     expect(find.byKey(const ValueKey<String>('home-profile-button')),
         findsOneWidget);
     expect(find.text('Streamed'), findsOneWidget);
-    expect(find.text('Top trending movies'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey<String>('home-menu-button')));
     await tester.pumpAndSettle();
@@ -59,13 +58,32 @@ void main() {
     await tester.tap(find.byIcon(Icons.close_rounded));
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -320));
-    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Continue Watching'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
 
     expect(find.text('Continue Watching'), findsOneWidget);
-    expect(find.text('New Releases'), findsOneWidget);
-    expect(find.text('Trending One'), findsOneWidget);
     expect(find.text('Space Show'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('Top 10 Movies This Week'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('Top 10 Movies This Week'), findsOneWidget);
+    expect(find.text('Top 10 Series This Week'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('New Releases'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('New Releases'), findsOneWidget);
+    expect(find.text('Trending One'), findsWidgets);
   });
 
   testWidgets('keeps rendering available home rows when one fetch fails', (
@@ -83,8 +101,22 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Top trending movies'), findsOneWidget);
-    expect(find.text('Trending One'), findsOneWidget);
+    expect(find.text('Trending One'), findsWidgets);
+
+    await tester.scrollUntilVisible(
+      find.text('Top 10 Movies This Week'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('Top 10 Movies This Week'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('New Releases'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+
     expect(find.text('New Releases'), findsOneWidget);
   });
 }

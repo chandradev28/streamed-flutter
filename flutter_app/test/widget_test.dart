@@ -23,10 +23,20 @@ void main() {
     expect(
         find.byKey(const ValueKey<String>('home-menu-button')), findsOneWidget);
     expect(find.text('Streamed'), findsOneWidget);
-    expect(find.text('Top trending movies'), findsOneWidget);
 
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -320));
-    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Top 10 Movies This Week'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('Top 10 Movies This Week'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('New Releases'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
 
     expect(find.text('New Releases'), findsOneWidget);
   });

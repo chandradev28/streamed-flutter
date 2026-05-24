@@ -5,6 +5,7 @@ import '../models/tmdb_media_models.dart';
 
 abstract class MediaCatalogService {
   Future<List<MediaSummary>> getTrendingMovies();
+  Future<List<MediaSummary>> getTrendingSeries();
   Future<List<MediaSummary>> getNowPlayingMovies();
   Future<MediaDetail> getMediaDetail(int id, String mediaType);
   Future<List<EpisodeItem>> getSeasonEpisodes(int tvId, int seasonNumber);
@@ -21,6 +22,15 @@ class TmdbMediaService implements MediaCatalogService {
   Future<List<MediaSummary>> getTrendingMovies() async {
     final Map<String, dynamic> payload = await _fetch(
       '/3/trending/movie/week',
+      const <String, String>{'language': 'en-US'},
+    );
+    return _readMediaSummaryList(payload).take(10).toList(growable: false);
+  }
+
+  @override
+  Future<List<MediaSummary>> getTrendingSeries() async {
+    final Map<String, dynamic> payload = await _fetch(
+      '/3/trending/tv/week',
       const <String, String>{'language': 'en-US'},
     );
     return _readMediaSummaryList(payload).take(10).toList(growable: false);

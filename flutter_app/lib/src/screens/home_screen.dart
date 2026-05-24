@@ -29,15 +29,24 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final PageController _heroController = PageController();
   List<MediaSummary> _trending = const <MediaSummary>[];
+  List<MediaSummary> _trendingSeries = const <MediaSummary>[];
   List<MediaSummary> _newReleases = const <MediaSummary>[];
   List<WatchHistoryItem> _continueWatching = const <WatchHistoryItem>[];
   bool _loading = true;
+  int _heroIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _loadHome();
+  }
+
+  @override
+  void dispose() {
+    _heroController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadHome() async {
@@ -49,6 +58,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadOrKeep<MediaSummary>(
         _trending,
         widget.mediaService.getTrendingMovies,
+      ),
+      _loadOrKeep<MediaSummary>(
+        _trendingSeries,
+        widget.mediaService.getTrendingSeries,
       ),
       _loadOrKeep<MediaSummary>(
         _newReleases,
@@ -66,8 +79,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _trending = results[0] as List<MediaSummary>;
-      _newReleases = results[1] as List<MediaSummary>;
-      _continueWatching = results[2] as List<WatchHistoryItem>;
+      _trendingSeries = results[1] as List<MediaSummary>;
+      _newReleases = results[2] as List<MediaSummary>;
+      _continueWatching = results[3] as List<WatchHistoryItem>;
       _loading = false;
     });
   }
@@ -276,6 +290,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final List<MediaSummary> heroItems = <MediaSummary>[
+      ..._trending.take(4),
+      ..._trendingSeries.take(4),
+    ];
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -345,50 +364,35 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              const _SectionHeader(title: 'Top trending movies'),
               SliverToBoxAdapter(
-                child: _loading && _trending.isEmpty
-                    ? const _PosterSkeletonRow(
-                        height: 282,
-                        itemWidth: 160,
-                        itemHeight: 240,
-                        count: 4,
-                      )
-                    : SizedBox(
-                        height: 282,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(24, 0, 8, 0),
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _trending.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(width: 16),
-                          itemBuilder: (BuildContext context, int index) {
-                            final MediaSummary item = _trending[index];
-                            return _PosterWithLabel(
-                              title: item.title,
-                              imagePath: item.posterPath,
-                              width: 160,
-                              height: 240,
-                              onTap: () => _openMedia(item),
-                            );
-                          },
-                        ),
+                child: _loading && heroItems.isEmpty
+                    ? const _HeroSkeleton()
+                    : _HomeHeroCarousel(
+                        controller: _heroController,
+                        items: heroItems,
+                        activeIndex: _heroIndex,
+                        onPageChanged: (int index) {
+                          setState(() {
+                            _heroIndex = index;
+                          });
+                        },
+                        onOpen: _openMedia,
                       ),
               ),
               if (_continueWatching.isNotEmpty) ...<Widget>[
                 const _SectionHeader(title: 'Continue Watching'),
                 SliverToBoxAdapter(
                   child: SizedBox(
-                    height: 170,
+                    height: 154,
                     child: ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 24, 0),
                       scrollDirection: Axis.horizontal,
                       itemCount: _continueWatching.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 12),
                       itemBuilder: (BuildContext context, int index) {
                         final WatchHistoryItem item = _continueWatching[index];
                         if (index == 0) {
-                          return _FeaturedContinueCard(
+                          return _GlanceContinueCard(
                             item: item,
                             onOpen: () => _openContinueWatching(item),
                             onRemove: () => _removeHistory(item.id),
@@ -405,6 +409,40 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ],
+              const _SectionHeader(
+                title: 'Top 10 Movies This Week',
+                actionLabel: 'View All',
+              ),
+              SliverToBoxAdapter(
+                child: _loading && _trending.isEmpty
+                    ? const _PosterSkeletonRow(
+                        height: 250,
+                        itemWidth: 138,
+                        itemHeight: 204,
+                        count: 4,
+                      )
+                    : _TopTenRail(
+                        items: _trending,
+                        onOpen: _openMedia,
+                      ),
+              ),
+              const _SectionHeader(
+                title: 'Top 10 Series This Week',
+                actionLabel: 'View All',
+              ),
+              SliverToBoxAdapter(
+                child: _loading && _trendingSeries.isEmpty
+                    ? const _PosterSkeletonRow(
+                        height: 250,
+                        itemWidth: 138,
+                        itemHeight: 204,
+                        count: 4,
+                      )
+                    : _TopTenRail(
+                        items: _trendingSeries,
+                        onOpen: _openMedia,
+                      ),
+              ),
               const _SectionHeader(title: 'New Releases'),
               SliverToBoxAdapter(
                 child: _loading && _newReleases.isEmpty
@@ -657,92 +695,82 @@ class _SkeletonBlock extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title});
-
-  final String title;
+class _HeroSkeleton extends StatelessWidget {
+  const _HeroSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-        child: Row(
-          children: <Widget>[
-            Text(
-              title,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, color: AppColors.text, size: 20),
-          ],
-        ),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(16, 2, 16, 22),
+      child: _SkeletonBlock(
+        height: 430,
+        borderRadius: 34,
       ),
     );
   }
 }
 
-class _PosterWithLabel extends StatelessWidget {
-  const _PosterWithLabel({
-    required this.title,
-    required this.imagePath,
-    required this.width,
-    required this.height,
-    required this.onTap,
+class _HomeHeroCarousel extends StatelessWidget {
+  const _HomeHeroCarousel({
+    required this.controller,
+    required this.items,
+    required this.activeIndex,
+    required this.onPageChanged,
+    required this.onOpen,
   });
 
-  final String title;
-  final String? imagePath;
-  final double width;
-  final double height;
-  final VoidCallback onTap;
+  final PageController controller;
+  final List<MediaSummary> items;
+  final int activeIndex;
+  final ValueChanged<int> onPageChanged;
+  final ValueChanged<MediaSummary> onOpen;
 
   @override
   Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const SizedBox(height: 24);
+    }
+
     return SizedBox(
-      width: width,
-      child: Column(
+      height: 460,
+      child: Stack(
         children: <Widget>[
-          GestureDetector(
-            onTap: onTap,
-            child: Container(
-              width: width,
-              height: height,
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: AppColors.cardBackground,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: imagePath == null
-                  ? const ColoredBox(color: AppColors.cardBackground)
-                  : Image.network(
-                      getImageUrl(imagePath, 'w342'),
-                      fit: BoxFit.cover,
-                      errorBuilder: (
-                        BuildContext context,
-                        Object error,
-                        StackTrace? stackTrace,
-                      ) {
-                        return const ColoredBox(
-                            color: AppColors.cardBackground);
-                      },
-                    ),
-            ),
+          PageView.builder(
+            controller: controller,
+            itemCount: items.length,
+            onPageChanged: onPageChanged,
+            itemBuilder: (BuildContext context, int index) {
+              final MediaSummary item = items[index];
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 28),
+                child: _HeroPanel(
+                  item: item,
+                  onTap: () => onOpen(item),
+                ),
+              );
+            },
           ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.text,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 4,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List<Widget>.generate(
+                items.length,
+                (int index) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: activeIndex == index ? 34 : 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: activeIndex == index
+                        ? AppColors.text
+                        : Colors.white.withOpacity(0.58),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
             ),
           ),
         ],
@@ -751,8 +779,337 @@ class _PosterWithLabel extends StatelessWidget {
   }
 }
 
-class _FeaturedContinueCard extends StatelessWidget {
-  const _FeaturedContinueCard({
+class _HeroPanel extends StatelessWidget {
+  const _HeroPanel({
+    required this.item,
+    required this.onTap,
+  });
+
+  final MediaSummary item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? imagePath = item.backdropPath ?? item.posterPath;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(34),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withOpacity(0.40),
+            blurRadius: 26,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          if (imagePath == null)
+            const ColoredBox(color: AppColors.cardBackground)
+          else
+            Image.network(
+              getImageUrl(imagePath, 'w780'),
+              fit: BoxFit.cover,
+              errorBuilder: (
+                BuildContext context,
+                Object error,
+                StackTrace? stackTrace,
+              ) {
+                return const ColoredBox(color: AppColors.cardBackground);
+              },
+            ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[
+                  Colors.black.withOpacity(0.05),
+                  Colors.black.withOpacity(0.45),
+                  Colors.black.withOpacity(0.92),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: 22,
+            right: 22,
+            bottom: 24,
+            child: Column(
+              children: <Widget>[
+                Text(
+                  item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 34,
+                    height: 0.98,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1.3,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  children: <Widget>[
+                    _HeroMeta(
+                        label: item.mediaType == 'tv' ? 'Series' : 'Movie'),
+                    _HeroMeta(label: _year(item.releaseDate)),
+                    const _HeroMeta(label: 'Top 10 this week'),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: onTap,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.text,
+                    foregroundColor: AppColors.background,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 34,
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  child: const Text(
+                    'View Details',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroMeta extends StatelessWidget {
+  const _HeroMeta({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    if (label.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Text(
+      label,
+      style: const TextStyle(
+        color: AppColors.text,
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+  }
+}
+
+class _TopTenRail extends StatelessWidget {
+  const _TopTenRail({
+    required this.items,
+    required this.onOpen,
+  });
+
+  final List<MediaSummary> items;
+  final ValueChanged<MediaSummary> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 258,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(24, 0, 16, 16),
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
+        itemBuilder: (BuildContext context, int index) {
+          final MediaSummary item = items[index];
+          return _RankedPosterCard(
+            rank: index + 1,
+            item: item,
+            onTap: () => onOpen(item),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RankedPosterCard extends StatelessWidget {
+  const _RankedPosterCard({
+    required this.rank,
+    required this.item,
+    required this.onTap,
+  });
+
+  final int rank;
+  final MediaSummary item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 142,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            Positioned.fill(
+              left: 18,
+              child: Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: AppColors.cardBackground,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: item.posterPath == null
+                    ? const ColoredBox(color: AppColors.cardBackground)
+                    : Image.network(
+                        getImageUrl(item.posterPath, 'w342'),
+                        fit: BoxFit.cover,
+                        errorBuilder: (
+                          BuildContext context,
+                          Object error,
+                          StackTrace? stackTrace,
+                        ) {
+                          return const ColoredBox(
+                            color: AppColors.cardBackground,
+                          );
+                        },
+                      ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              bottom: 18,
+              child: Text(
+                rank.toString(),
+                style: TextStyle(
+                  color: Colors.black.withOpacity(0.35),
+                  fontSize: 78,
+                  height: 0.8,
+                  fontWeight: FontWeight.w900,
+                  shadows: const <Shadow>[
+                    Shadow(color: Colors.white, blurRadius: 1.2),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              left: 28,
+              right: 8,
+              bottom: 12,
+              child: Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  shadows: <Shadow>[
+                    Shadow(color: Colors.black, blurRadius: 8),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    this.actionLabel,
+  });
+
+  final String title;
+  final String? actionLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+        child: Row(
+          children: <Widget>[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  width: 64,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: AppColors.text,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            if (actionLabel != null)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white.withOpacity(0.04)),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Text(
+                      actionLabel!,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.text,
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GlanceContinueCard extends StatelessWidget {
+  const _GlanceContinueCard({
     required this.item,
     required this.onOpen,
     required this.onRemove,
@@ -769,89 +1126,112 @@ class _FeaturedContinueCard extends StatelessWidget {
         GestureDetector(
           onTap: onOpen,
           child: Container(
-            width: 280,
-            height: 160,
+            width: 304,
+            height: 142,
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(22),
+              color: Colors.white.withOpacity(0.07),
+              border: Border.all(color: Colors.white.withOpacity(0.10)),
             ),
             child: Stack(
               fit: StackFit.expand,
               children: <Widget>[
-                (item.backdropPath ?? item.posterPath) == null
-                    ? const ColoredBox(color: AppColors.cardBackground)
-                    : Image.network(
-                        getImageUrl(
-                            item.backdropPath ?? item.posterPath, 'w780'),
-                        fit: BoxFit.cover,
-                        errorBuilder: (
-                          BuildContext context,
-                          Object error,
-                          StackTrace? stackTrace,
-                        ) {
-                          return const ColoredBox(
-                              color: AppColors.cardBackground);
-                        },
-                      ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: <Color>[
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.9),
-                      ],
+                Row(
+                  children: <Widget>[
+                    SizedBox(
+                      width: 92,
+                      height: double.infinity,
+                      child: item.posterPath == null
+                          ? const ColoredBox(color: AppColors.cardBackground)
+                          : Image.network(
+                              getImageUrl(item.posterPath, 'w342'),
+                              fit: BoxFit.cover,
+                              errorBuilder: (
+                                BuildContext context,
+                                Object error,
+                                StackTrace? stackTrace,
+                              ) {
+                                return const ColoredBox(
+                                  color: AppColors.cardBackground,
+                                );
+                              },
+                            ),
                     ),
-                  ),
-                ),
-                Positioned(
-                  left: 12,
-                  right: 12,
-                  bottom: 12,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        _timeLeft(item),
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 14, 12, 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: Text(
+                                    item.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: AppColors.text,
+                                      fontSize: 17,
+                                      height: 1.05,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.3,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.text,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: const Text(
+                                    'Up next',
+                                    style: TextStyle(
+                                      color: AppColors.background,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _subtitle(item),
+                              style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _timeLeft(item),
+                              style: const TextStyle(
+                                color: AppColors.textSubtle,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const Spacer(),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(99),
+                              child: LinearProgressIndicator(
+                                minHeight: 4,
+                                value: (item.progress / 100).clamp(0, 1),
+                                color: AppColors.text,
+                                backgroundColor: Colors.white.withOpacity(0.14),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.text,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _subtitle(item),
-                        style: const TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 11,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(99),
-                        child: LinearProgressIndicator(
-                          minHeight: 3,
-                          value: (item.progress / 100).clamp(0, 1),
-                          color: AppColors.primary,
-                          backgroundColor: Colors.white.withOpacity(0.2),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -886,11 +1266,12 @@ class _MiniContinueCard extends StatelessWidget {
           onTap: onOpen,
           child: Container(
             width: 110,
-            height: 165,
+            height: 142,
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
             ),
             child: Stack(
               fit: StackFit.expand,

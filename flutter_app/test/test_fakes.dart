@@ -18,6 +18,16 @@ class FakeMediaService implements MediaCatalogService {
         releaseDate: '2024-01-01',
       ),
     ],
+    this.trendingSeries = const <MediaSummary>[
+      MediaSummary(
+        id: 3,
+        mediaType: 'tv',
+        title: 'Series One',
+        posterPath: null,
+        backdropPath: null,
+        releaseDate: '2024-02-01',
+      ),
+    ],
     this.nowPlaying = const <MediaSummary>[
       MediaSummary(
         id: 2,
@@ -44,6 +54,7 @@ class FakeMediaService implements MediaCatalogService {
   });
 
   final List<MediaSummary> trending;
+  final List<MediaSummary> trendingSeries;
   final List<MediaSummary> nowPlaying;
   final MediaDetail? detail;
   final List<EpisodeItem> episodes;
@@ -102,6 +113,9 @@ class FakeMediaService implements MediaCatalogService {
 
   @override
   Future<List<MediaSummary>> getTrendingMovies() async => trending;
+
+  @override
+  Future<List<MediaSummary>> getTrendingSeries() async => trendingSeries;
 }
 
 class FakeWatchHistoryRepository implements ContinueWatchingRepository {
