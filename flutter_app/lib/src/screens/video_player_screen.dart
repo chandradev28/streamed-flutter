@@ -9,8 +9,10 @@ import 'package:video_player/video_player.dart';
 
 import '../models/torbox_models.dart';
 import '../models/watch_history_item.dart';
+import '../services/app_settings_repository.dart';
 import '../services/episode_parser.dart';
 import '../services/torbox_api_service.dart';
+import '../services/trakt_api_service.dart';
 import '../services/watch_history_repository.dart';
 import '../theme/app_colors.dart';
 
@@ -34,9 +36,13 @@ class VideoPlayerScreen extends StatefulWidget {
     this.startPositionMs,
     this.provider,
     this.streamHeaders = const <String, String>{},
+    AppSettingsRepository? settingsRepository,
     TorBoxApiService? torBoxApiService,
+    TraktApiService? traktApiService,
     ContinueWatchingRepository? watchHistoryRepository,
-  })  : torBoxApiService = torBoxApiService ?? TorBoxApiService(),
+  })  : settingsRepository = settingsRepository ?? AppSettingsRepository(),
+        torBoxApiService = torBoxApiService ?? TorBoxApiService(),
+        traktApiService = traktApiService ?? TraktApiService(),
         watchHistoryRepository =
             watchHistoryRepository ?? WatchHistoryRepository();
 
@@ -57,7 +63,9 @@ class VideoPlayerScreen extends StatefulWidget {
   final int? startPositionMs;
   final String? provider;
   final Map<String, String> streamHeaders;
+  final AppSettingsRepository settingsRepository;
   final TorBoxApiService torBoxApiService;
+  final TraktApiService traktApiService;
   final ContinueWatchingRepository watchHistoryRepository;
 
   @override
@@ -65,6 +73,9 @@ class VideoPlayerScreen extends StatefulWidget {
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+  static const MethodChannel _externalPlayerChannel =
+      MethodChannel('streamed/external_player');
+
   VideoPlayerController? _controller;
   List<TorBoxTorrentFile> _files = const <TorBoxTorrentFile>[];
   String? _resolvedUrl;
@@ -86,6 +97,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   List<int> _activeAudioTracks = const <int>[];
   List<int> _activeSubtitleTracks = const <int>[];
   int _lastPersistedSecond = -1;
+  AppSettings _settings = const AppSettings();
+  bool _settingsLoaded = false;
+  bool _preferredTracksApplied = false;
+  bool _externalOpenedAutomatically = false;
+  bool _autoNextStarted = false;
+  bool _traktStarted = false;
+  int _lastTraktPauseSecond = -1;
 
   @override
   void initState() {
@@ -96,7 +114,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _load();
   }
 
+  Future<void> _loadSettings() async {
+    if (_settingsLoaded) {
+      return;
+    }
+    final AppSettings settings = await widget.settingsRepository.loadSettings();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _settings = settings;
+      _settingsLoaded = true;
+    });
+  }
+
   Future<void> _load() async {
+    await _loadSettings();
     if (_resolvedUrl != null && _resolvedUrl!.isNotEmpty) {
       await _openResolvedMedia(_resolvedUrl!);
       return;
@@ -293,11 +326,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {
       _resolvedUrl = url;
     });
+    _externalOpenedAutomatically = false;
 
     await _openResolvedMedia(url);
   }
 
   Future<void> _openResolvedMedia(String url) async {
+    await _loadSettings();
+    if (_settings.playbackPreferExternalPlayer &&
+        !_externalOpenedAutomatically) {
+      _externalOpenedAutomatically = true;
+      setState(() {
+        _resolvedUrl = url;
+        _loading = false;
+        _initialized = false;
+        _playbackIssue = const _PlaybackIssue(
+          title: 'Opening external player',
+          body:
+              'Your playback settings prefer an external video app for streams.',
+          showExternalActions: true,
+        );
+        _error = 'Opening external player.';
+      });
+      await _openExternalPlayer();
+      return;
+    }
+
     VideoPlayerController? nextController;
     try {
       final VideoPlayerController? previousController = _controller;
@@ -310,10 +364,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _position = Duration.zero;
         _duration = Duration.zero;
       });
+      _preferredTracksApplied = false;
+      _autoNextStarted = false;
 
       _progressTimer?.cancel();
       previousController?.removeListener(_handleControllerTick);
       await previousController?.dispose();
+      _traktStarted = false;
 
       nextController = VideoPlayerController.networkUrl(
         Uri.parse(url),
@@ -321,12 +378,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       );
       await nextController.initialize();
       await nextController.setLooping(false);
-      await nextController.play();
+      await nextController.setPlaybackSpeed(_settings.playbackDefaultSpeed);
 
-      if (widget.startPositionMs != null && widget.startPositionMs! > 0) {
+      final int? startPositionMs = await _initialStartPositionMs();
+      if (startPositionMs != null && startPositionMs > 0) {
         await nextController.seekTo(
-          Duration(milliseconds: widget.startPositionMs!),
+          Duration(milliseconds: startPositionMs),
         );
+      }
+
+      if (_settings.playbackAutoPlay) {
+        await nextController.play();
+        unawaited(_scrobbleStart());
       }
 
       nextController.addListener(_handleControllerTick);
@@ -370,6 +433,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  Future<int?> _initialStartPositionMs() async {
+    if (!_settings.playbackResumeEnabled) {
+      return null;
+    }
+    if (widget.startPositionMs != null && widget.startPositionMs! > 0) {
+      return widget.startPositionMs;
+    }
+
+    final String? historyId = _historyId;
+    if (historyId == null) {
+      return null;
+    }
+
+    try {
+      final List<WatchHistoryItem> history =
+          await widget.watchHistoryRepository.getContinueWatching(100);
+      for (final WatchHistoryItem item in history) {
+        if (item.id == historyId &&
+            item.currentTime > 0 &&
+            item.progress < 95) {
+          return item.currentTime;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   void _handleControllerTick() {
     final VideoPlayerController? controller = _controller;
     if (controller == null || !mounted) {
@@ -392,7 +482,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     if (value.isCompleted) {
       unawaited(_persistProgress(forceCompleted: true));
+      unawaited(_scrobbleStop());
+      unawaited(_playNextEpisodeIfAllowed(force: true));
       return;
+    }
+
+    if (_settings.playbackAutoPlayNextEpisode &&
+        !_autoNextStarted &&
+        value.duration > Duration.zero) {
+      final double percent =
+          (value.position.inMilliseconds / value.duration.inMilliseconds) * 100;
+      if (percent >= _settings.playbackNextEpisodeThreshold) {
+        unawaited(_playNextEpisodeIfAllowed());
+      }
     }
 
     if (value.position.inSeconds >= 10 &&
@@ -400,10 +502,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         value.position.inSeconds % 10 == 0) {
       _lastPersistedSecond = value.position.inSeconds;
       unawaited(_persistProgress());
+      unawaited(_scrobblePause(throttled: true));
     }
   }
 
   Future<void> _persistProgress({bool forceCompleted = false}) async {
+    if (!_settings.playbackSaveProgress) {
+      return;
+    }
     final int? tmdbId = widget.tmdbId;
     final String? mediaType = widget.mediaType;
     if (tmdbId == null || mediaType == null) {
@@ -432,12 +538,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       });
     }
 
-    final String id = <String>[
-      tmdbId.toString(),
-      mediaType,
-      if (widget.seasonNumber != null) 's${widget.seasonNumber}',
-      if (widget.episodeNumber != null) 'e${widget.episodeNumber}',
-    ].join('_');
+    final String id = _historyId!;
 
     await widget.watchHistoryRepository.saveProgress(
       WatchHistoryItem(
@@ -468,6 +569,88 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
+  String? get _historyId {
+    final int? tmdbId = widget.tmdbId;
+    final String? mediaType = widget.mediaType;
+    if (tmdbId == null || mediaType == null) {
+      return null;
+    }
+    return <String>[
+      tmdbId.toString(),
+      mediaType,
+      if (widget.seasonNumber != null) 's${widget.seasonNumber}',
+      if (widget.episodeNumber != null) 'e${widget.episodeNumber}',
+    ].join('_');
+  }
+
+  Future<void> _scrobbleStart() async {
+    if (!_settings.traktScrobbleEnabled || _traktStarted) {
+      return;
+    }
+    final TraktScrobbleItem? item = _traktScrobbleItem();
+    if (item == null) {
+      return;
+    }
+    _traktStarted = true;
+    try {
+      await widget.traktApiService.scrobbleStart(item);
+    } catch (_) {}
+  }
+
+  Future<void> _scrobblePause({bool throttled = false}) async {
+    if (!_settings.traktScrobbleEnabled) {
+      return;
+    }
+    if (throttled &&
+        _position.inSeconds > 0 &&
+        _position.inSeconds - _lastTraktPauseSecond < 30) {
+      return;
+    }
+    final TraktScrobbleItem? item = _traktScrobbleItem();
+    if (item == null) {
+      return;
+    }
+    _lastTraktPauseSecond = _position.inSeconds;
+    try {
+      await widget.traktApiService.scrobblePause(item);
+    } catch (_) {}
+  }
+
+  Future<void> _scrobbleStop() async {
+    if (!_settings.traktScrobbleEnabled) {
+      return;
+    }
+    final TraktScrobbleItem? item = _traktScrobbleItem(forceProgress: 100);
+    if (item == null) {
+      return;
+    }
+    try {
+      await widget.traktApiService.scrobbleStop(item);
+    } catch (_) {}
+  }
+
+  TraktScrobbleItem? _traktScrobbleItem({double? forceProgress}) {
+    final int? tmdbId = widget.tmdbId;
+    final String? mediaType = widget.mediaType;
+    if (tmdbId == null || mediaType == null) {
+      return null;
+    }
+    final double progress = forceProgress ??
+        (_duration.inMilliseconds <= 0
+            ? 0
+            : ((_position.inMilliseconds / _duration.inMilliseconds) * 100)
+                .clamp(0, 100)
+                .toDouble());
+    return TraktScrobbleItem(
+      title: widget.title,
+      mediaType: mediaType,
+      tmdbId: tmdbId,
+      progress: progress,
+      seasonNumber: widget.seasonNumber,
+      episodeNumber: widget.episodeNumber,
+    );
+  }
+
   Future<void> _togglePlayPause() async {
     final VideoPlayerController? controller = _controller;
     if (controller == null) {
@@ -476,8 +659,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     if (controller.value.isPlaying) {
       await controller.pause();
+      unawaited(_scrobblePause());
     } else {
       await controller.play();
+      unawaited(_scrobbleStart());
     }
     if (!mounted) {
       return;
@@ -501,10 +686,49 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     await controller.seekTo(clamped);
   }
 
+  Future<void> _setPlaybackSpeed(double speed) async {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    await controller.setPlaybackSpeed(speed);
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _setTemporarySpeed(bool active) async {
+    if (!_settings.playbackHoldToSpeed) {
+      return;
+    }
+    await _setPlaybackSpeed(
+      active ? _settings.playbackHoldSpeed : _settings.playbackDefaultSpeed,
+    );
+  }
+
   Future<void> _openExternalPlayer() async {
     final String? url = _resolvedUrl;
     if (url == null || url.isEmpty) {
       return;
+    }
+
+    if (Platform.isAndroid) {
+      try {
+        final bool opened = await _externalPlayerChannel.invokeMethod<bool>(
+              'openVideo',
+              <String, String>{
+                'url': url,
+                'title': _activeFile?.displayName ?? widget.title,
+              },
+            ) ??
+            false;
+        if (opened) {
+          return;
+        }
+      } on PlatformException {
+        // Fall through to url_launcher/copy fallback below.
+      }
     }
 
     final Uri uri = Uri.parse(url);
@@ -542,6 +766,68 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  Future<void> _playNextEpisodeIfAllowed({bool force = false}) async {
+    if (!_settings.playbackAutoPlayNextEpisode || _autoNextStarted) {
+      return;
+    }
+
+    final ParsedEpisodeFile? nextEpisode = _nextParsedEpisode();
+    if (nextEpisode == null || nextEpisode.originalIndex >= _files.length) {
+      return;
+    }
+
+    _autoNextStarted = true;
+    await _persistProgress(forceCompleted: force);
+    await _resolveFile(_files[nextEpisode.originalIndex].id);
+    if (!mounted) {
+      return;
+    }
+    _showFeatureMessage(
+      'Playing next episode: ${formatEpisodeLabel(nextEpisode.season, nextEpisode.episode)}',
+    );
+  }
+
+  ParsedEpisodeFile? _nextParsedEpisode() {
+    final int? activeFileId = _activeFileId;
+    if (activeFileId == null || _files.isEmpty) {
+      return null;
+    }
+
+    final int activeIndex = _files.indexWhere(
+      (TorBoxTorrentFile file) => file.id == activeFileId,
+    );
+    if (activeIndex < 0) {
+      return null;
+    }
+
+    final List<ParsedEpisodeFile> episodes = parseSeasonPack(_files)
+        .where((SeasonFileGroup group) => group.season > 0)
+        .expand((SeasonFileGroup group) => group.episodes)
+        .toList(growable: false)
+      ..sort((ParsedEpisodeFile a, ParsedEpisodeFile b) {
+        final int seasonComparison = a.season.compareTo(b.season);
+        if (seasonComparison != 0) {
+          return seasonComparison;
+        }
+        return a.episode.compareTo(b.episode);
+      });
+
+    final int currentEpisodeIndex = episodes.indexWhere(
+      (ParsedEpisodeFile episode) => episode.originalIndex == activeIndex,
+    );
+    if (currentEpisodeIndex < 0 || currentEpisodeIndex >= episodes.length - 1) {
+      return null;
+    }
+
+    final ParsedEpisodeFile current = episodes[currentEpisodeIndex];
+    final ParsedEpisodeFile next = episodes[currentEpisodeIndex + 1];
+    if (!_settings.playbackBingeGroupNextEpisode &&
+        next.season != current.season) {
+      return null;
+    }
+    return next;
+  }
+
   Future<void> _refreshMediaTracks() async {
     final VideoPlayerController? controller = _controller;
     if (controller == null || !_initialized) {
@@ -568,6 +854,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _activeAudioTracks = activeAudio;
         _activeSubtitleTracks = activeSubtitles;
       });
+      if (!_preferredTracksApplied) {
+        _preferredTracksApplied = true;
+        unawaited(_applyPreferredTracks());
+      }
     } catch (_) {
       if (!mounted) {
         return;
@@ -579,6 +869,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _activeSubtitleTracks = const <int>[];
       });
     }
+  }
+
+  Future<void> _applyPreferredTracks() async {
+    final String audioLanguage = _settings.playbackPreferredAudioLanguage;
+    final String subtitleLanguage = _settings.playbackPreferredSubtitleLanguage;
+    final String secondarySubtitleLanguage =
+        _settings.playbackSecondarySubtitleLanguage;
+
+    final int? audioIndex = _findTrackByLanguage(_audioTracks, audioLanguage);
+    if (audioIndex != null) {
+      await _selectAudioTrack(audioIndex);
+    }
+
+    final int? subtitleIndex =
+        _findTrackByLanguage(_subtitleTracks, subtitleLanguage) ??
+            _findTrackByLanguage(_subtitleTracks, secondarySubtitleLanguage);
+    if (subtitleIndex != null) {
+      await _selectSubtitleTrack(subtitleIndex);
+    }
+  }
+
+  int? _findTrackByLanguage(List<dynamic> tracks, String language) {
+    final String query = language.trim().toLowerCase();
+    if (query.isEmpty) {
+      return null;
+    }
+    for (int index = 0; index < tracks.length; index += 1) {
+      final String haystack = tracks[index].toString().toLowerCase();
+      if (haystack.contains(query)) {
+        return index;
+      }
+    }
+    return null;
   }
 
   Future<void> _toggleOrientation() async {
@@ -797,6 +1120,61 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
+  void _showSpeedSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      showDragHandle: true,
+      builder: (BuildContext context) {
+        final double currentSpeed =
+            _controller?.value.playbackSpeed ?? _settings.playbackDefaultSpeed;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Playback speed',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: const <double>[0.75, 1.0, 1.25, 1.5, 2.0]
+                      .map(
+                        (double speed) => ChoiceChip(
+                          label: Text(_speedLabel(speed)),
+                          selected: (currentSpeed - speed).abs() < 0.01,
+                          selectedColor: AppColors.accent.withOpacity(0.28),
+                          backgroundColor: Colors.white.withOpacity(0.05),
+                          labelStyle: const TextStyle(
+                            color: AppColors.text,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          onSelected: (_) async {
+                            Navigator.of(context).maybePop();
+                            await _setPlaybackSpeed(speed);
+                          },
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showEpisodesSheet({
     required List<SeasonFileGroup> seasonGroups,
     required List<int> unparsedVideoIndices,
@@ -898,6 +1276,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void dispose() {
     unawaited(_persistProgress());
+    unawaited(_scrobblePause());
     _progressTimer?.cancel();
     _controller?.removeListener(_handleControllerTick);
     _controller?.dispose();
@@ -999,15 +1378,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     landscapeLocked: _landscapeLocked,
                     hasFiles: _files.length > 1,
                     hasStreamUrl: hasStreamUrl,
+                    skipSeconds: _settings.playbackSkipSeconds,
+                    showFilesButton: _settings.playbackShowFilesButton,
+                    showSubtitlesButton: _settings.playbackShowSubtitlesButton,
+                    showAudioButton: _settings.playbackShowAudioButton,
+                    showExternalButton: _settings.playbackShowExternalButton,
+                    showSpeedButton: _settings.playbackSpeedControls,
                     saving: _saving,
                     onTap: () {
                       setState(() {
                         _showControls = !_showControls;
                       });
                     },
+                    onHoldSpeedStart: () => _setTemporarySpeed(true),
+                    onHoldSpeedEnd: () => _setTemporarySpeed(false),
                     onPlayPause: _togglePlayPause,
-                    onBack10: () => _seekRelative(-10),
-                    onForward10: () => _seekRelative(10),
+                    onBack: () => _seekRelative(-_settings.playbackSkipSeconds),
+                    onForward: () =>
+                        _seekRelative(_settings.playbackSkipSeconds),
                     onSeek: !canControl
                         ? null
                         : (double value) async {
@@ -1028,6 +1416,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     onRetry: _retryActiveFile,
                     onAudio: _showAudioSheet,
                     onSubtitle: _showSubtitleSheet,
+                    onSpeed: _showSpeedSheet,
                     onOrientation: _toggleOrientation,
                     onSaveProgress: () async {
                       final ScaffoldMessengerState messenger =
@@ -1082,15 +1471,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       landscapeLocked: _landscapeLocked,
                       hasFiles: _files.length > 1,
                       hasStreamUrl: hasStreamUrl,
+                      skipSeconds: _settings.playbackSkipSeconds,
+                      showFilesButton: _settings.playbackShowFilesButton,
+                      showSubtitlesButton:
+                          _settings.playbackShowSubtitlesButton,
+                      showAudioButton: _settings.playbackShowAudioButton,
+                      showExternalButton: _settings.playbackShowExternalButton,
+                      showSpeedButton: _settings.playbackSpeedControls,
                       saving: _saving,
                       onTap: () {
                         setState(() {
                           _showControls = !_showControls;
                         });
                       },
+                      onHoldSpeedStart: () => _setTemporarySpeed(true),
+                      onHoldSpeedEnd: () => _setTemporarySpeed(false),
                       onPlayPause: _togglePlayPause,
-                      onBack10: () => _seekRelative(-10),
-                      onForward10: () => _seekRelative(10),
+                      onBack: () =>
+                          _seekRelative(-_settings.playbackSkipSeconds),
+                      onForward: () =>
+                          _seekRelative(_settings.playbackSkipSeconds),
                       onSeek: !canControl
                           ? null
                           : (double value) async {
@@ -1110,6 +1510,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       onRetry: _retryActiveFile,
                       onAudio: _showAudioSheet,
                       onSubtitle: _showSubtitleSheet,
+                      onSpeed: _showSpeedSheet,
                       onOrientation: _toggleOrientation,
                       onSaveProgress: () async {
                         final ScaffoldMessengerState messenger =
@@ -1182,6 +1583,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 }
 
+IconData _skipBackIcon(int seconds) {
+  switch (seconds) {
+    case 5:
+      return Icons.replay_5_rounded;
+    case 30:
+      return Icons.replay_30_rounded;
+    case 10:
+    case 15:
+    default:
+      return Icons.replay_10_rounded;
+  }
+}
+
+IconData _skipForwardIcon(int seconds) {
+  switch (seconds) {
+    case 5:
+      return Icons.forward_5_rounded;
+    case 30:
+      return Icons.forward_30_rounded;
+    case 10:
+    case 15:
+    default:
+      return Icons.forward_10_rounded;
+  }
+}
+
+String _speedLabel(double value) {
+  if (value == value.roundToDouble()) {
+    return '${value.toInt()}x';
+  }
+  return '${value.toStringAsFixed(2).replaceFirst(RegExp(r'0$'), '')}x';
+}
+
 class _PlayerStage extends StatelessWidget {
   const _PlayerStage({
     required this.height,
@@ -1206,11 +1640,19 @@ class _PlayerStage extends StatelessWidget {
     required this.landscapeLocked,
     required this.hasFiles,
     required this.hasStreamUrl,
+    required this.skipSeconds,
+    required this.showFilesButton,
+    required this.showSubtitlesButton,
+    required this.showAudioButton,
+    required this.showExternalButton,
+    required this.showSpeedButton,
     required this.saving,
     required this.onTap,
+    required this.onHoldSpeedStart,
+    required this.onHoldSpeedEnd,
     required this.onPlayPause,
-    required this.onBack10,
-    required this.onForward10,
+    required this.onBack,
+    required this.onForward,
     required this.onSeek,
     required this.onChooseFile,
     required this.onOpenExternal,
@@ -1218,6 +1660,7 @@ class _PlayerStage extends StatelessWidget {
     required this.onRetry,
     required this.onAudio,
     required this.onSubtitle,
+    required this.onSpeed,
     required this.onOrientation,
     required this.onSaveProgress,
   });
@@ -1244,11 +1687,19 @@ class _PlayerStage extends StatelessWidget {
   final bool landscapeLocked;
   final bool hasFiles;
   final bool hasStreamUrl;
+  final int skipSeconds;
+  final bool showFilesButton;
+  final bool showSubtitlesButton;
+  final bool showAudioButton;
+  final bool showExternalButton;
+  final bool showSpeedButton;
   final bool saving;
   final VoidCallback onTap;
+  final Future<void> Function() onHoldSpeedStart;
+  final Future<void> Function() onHoldSpeedEnd;
   final Future<void> Function() onPlayPause;
-  final Future<void> Function() onBack10;
-  final Future<void> Function() onForward10;
+  final Future<void> Function() onBack;
+  final Future<void> Function() onForward;
   final ValueChanged<double>? onSeek;
   final VoidCallback onChooseFile;
   final Future<void> Function() onOpenExternal;
@@ -1256,6 +1707,7 @@ class _PlayerStage extends StatelessWidget {
   final Future<void> Function() onRetry;
   final VoidCallback onAudio;
   final VoidCallback onSubtitle;
+  final VoidCallback onSpeed;
   final Future<void> Function() onOrientation;
   final Future<void> Function() onSaveProgress;
 
@@ -1271,6 +1723,9 @@ class _PlayerStage extends StatelessWidget {
 
     final Widget stage = GestureDetector(
       onTap: onTap,
+      onLongPressStart: (_) => onHoldSpeedStart(),
+      onLongPressEnd: (_) => onHoldSpeedEnd(),
+      onLongPressCancel: () => onHoldSpeedEnd(),
       child: DecoratedBox(
         decoration: const BoxDecoration(color: Colors.black),
         child: Stack(
@@ -1413,8 +1868,8 @@ class _PlayerStage extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: <Widget>[
                                 _OverlayControlButton(
-                                  icon: Icons.replay_10_rounded,
-                                  onTap: onBack10,
+                                  icon: _skipBackIcon(skipSeconds),
+                                  onTap: onBack,
                                 ),
                                 const SizedBox(width: 18),
                                 _OverlayControlButton(
@@ -1426,8 +1881,8 @@ class _PlayerStage extends StatelessWidget {
                                 ),
                                 const SizedBox(width: 18),
                                 _OverlayControlButton(
-                                  icon: Icons.forward_10_rounded,
-                                  onTap: onForward10,
+                                  icon: _skipForwardIcon(skipSeconds),
+                                  onTap: onForward,
                                 ),
                               ],
                             ),
@@ -1472,15 +1927,17 @@ class _PlayerStage extends StatelessWidget {
                             inactiveColor: Colors.white24,
                           ),
                         ),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: <Widget>[
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: <Widget>[
+                            if (showFilesButton)
                               _BottomToolButton(
                                 icon: Icons.playlist_play_rounded,
                                 label: hasFiles ? 'Episodes' : 'Files',
                                 onTap: onChooseFile,
                               ),
+                            if (showSubtitlesButton)
                               _BottomToolButton(
                                 icon: Icons.subtitles_rounded,
                                 label: subtitleTrackCount > 0
@@ -1489,6 +1946,7 @@ class _PlayerStage extends StatelessWidget {
                                 active: subtitlesVisible,
                                 onTap: onSubtitle,
                               ),
+                            if (showAudioButton)
                               _BottomToolButton(
                                 icon: Icons.graphic_eq_rounded,
                                 label: audioTrackCount > 0
@@ -1496,21 +1954,26 @@ class _PlayerStage extends StatelessWidget {
                                     : 'Audio',
                                 onTap: onAudio,
                               ),
-                              if (hasStreamUrl)
-                                _BottomToolButton(
-                                  icon: Icons.open_in_new_rounded,
-                                  label: 'External',
-                                  onTap: onOpenExternal,
-                                ),
+                            if (showSpeedButton)
                               _BottomToolButton(
-                                icon: saving
-                                    ? Icons.hourglass_top_rounded
-                                    : Icons.bookmark_add_outlined,
-                                label: saving ? 'Saving' : 'Save',
-                                onTap: onSaveProgress,
+                                icon: Icons.speed_rounded,
+                                label: 'Speed',
+                                onTap: onSpeed,
                               ),
-                            ],
-                          ),
+                            if (hasStreamUrl && showExternalButton)
+                              _BottomToolButton(
+                                icon: Icons.open_in_new_rounded,
+                                label: 'External',
+                                onTap: onOpenExternal,
+                              ),
+                            _BottomToolButton(
+                              icon: saving
+                                  ? Icons.hourglass_top_rounded
+                                  : Icons.bookmark_add_outlined,
+                              label: saving ? 'Saving' : 'Save',
+                              onTap: onSaveProgress,
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1615,38 +2078,35 @@ class _BottomToolButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Material(
-        color: active
-            ? AppColors.accent.withOpacity(0.94)
-            : Colors.white.withOpacity(0.12),
+    return Material(
+      color: active
+          ? AppColors.accent.withOpacity(0.94)
+          : Colors.white.withOpacity(0.12),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: () {
+          final FutureOr<void> result = onTap();
+          if (result is Future<void>) {
+            unawaited(result);
+          }
+        },
         borderRadius: BorderRadius.circular(999),
-        child: InkWell(
-          onTap: () {
-            final FutureOr<void> result = onTap();
-            if (result is Future<void>) {
-              unawaited(result);
-            }
-          },
-          borderRadius: BorderRadius.circular(999),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Icon(icon, color: Colors.white, size: 16),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, color: Colors.white, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

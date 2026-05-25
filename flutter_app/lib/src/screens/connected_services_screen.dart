@@ -5,6 +5,7 @@ import '../services/app_settings_repository.dart';
 import '../services/real_debrid_api_service.dart';
 import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/layout_options.dart';
 
 class ConnectedServicesScreen extends StatefulWidget {
   ConnectedServicesScreen({
@@ -215,12 +216,13 @@ class _ConnectedServicesScreenState extends State<ConnectedServicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final Color accent = LayoutOptions.accentFor(_settings);
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: LayoutOptions.backgroundFor(_settings),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _load,
-          color: AppColors.text,
+          color: accent,
           backgroundColor: AppColors.surface,
           child: ListView(
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -232,7 +234,7 @@ class _ConnectedServicesScreenState extends State<ConnectedServicesScreen> {
                     padding: const EdgeInsets.only(top: 26),
                     child: IconButton(
                       onPressed: () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.arrow_back_rounded),
+                      icon: Icon(Icons.arrow_back_rounded, color: accent),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -275,6 +277,7 @@ class _ConnectedServicesScreenState extends State<ConnectedServicesScreen> {
                           'Browse and play files already in your connected accounts.',
                       value: _settings.cloudLibraryEnabled,
                       enabled: _hasConnectedAccount,
+                      accent: accent,
                       onChanged: _setCloudLibraryEnabled,
                     ),
                     const SizedBox(height: 16),
@@ -284,6 +287,7 @@ class _ConnectedServicesScreenState extends State<ConnectedServicesScreen> {
                           'Ask a connected service for playable links when a result needs it.',
                       value: _settings.resolvePlayableLinksEnabled,
                       enabled: _hasConnectedAccount,
+                      accent: accent,
                       onChanged: _setResolvePlayableLinksEnabled,
                     ),
                     if (!_hasConnectedAccount) ...<Widget>[
@@ -317,6 +321,7 @@ class _ConnectedServicesScreenState extends State<ConnectedServicesScreen> {
                     hintText: 'TorBox API key',
                     connected: (_settings.torBoxApiKey ?? '').isNotEmpty,
                     loading: _loading || _saving,
+                    accent: accent,
                     onSave: _saveTorBoxKey,
                     onRemove: _removeTorBoxKey,
                   ),
@@ -331,6 +336,7 @@ class _ConnectedServicesScreenState extends State<ConnectedServicesScreen> {
                     hintText: 'Real-Debrid API token',
                     connected: (_settings.realDebridApiKey ?? '').isNotEmpty,
                     loading: _loading || _saving,
+                    accent: accent,
                     onSave: _saveRealDebridKey,
                     onRemove: _removeRealDebridKey,
                   ),
@@ -338,6 +344,7 @@ class _ConnectedServicesScreenState extends State<ConnectedServicesScreen> {
               ),
               const SizedBox(height: 26),
               TextButton(
+                style: TextButton.styleFrom(foregroundColor: accent),
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -385,6 +392,7 @@ class _FeatureSwitchTile extends StatelessWidget {
     required this.subtitle,
     required this.value,
     required this.enabled,
+    required this.accent,
     required this.onChanged,
   });
 
@@ -392,6 +400,7 @@ class _FeatureSwitchTile extends StatelessWidget {
   final String subtitle;
   final bool value;
   final bool enabled;
+  final Color accent;
   final ValueChanged<bool> onChanged;
 
   @override
@@ -426,6 +435,7 @@ class _FeatureSwitchTile extends StatelessWidget {
         Switch(
           value: value && enabled,
           onChanged: enabled ? onChanged : null,
+          activeColor: accent,
         ),
       ],
     );
@@ -458,6 +468,7 @@ class _ServiceKeyPanel extends StatelessWidget {
     required this.hintText,
     required this.connected,
     required this.loading,
+    required this.accent,
     required this.onSave,
     required this.onRemove,
     this.status,
@@ -469,6 +480,7 @@ class _ServiceKeyPanel extends StatelessWidget {
   final String hintText;
   final bool connected;
   final bool loading;
+  final Color accent;
   final Future<void> Function() onSave;
   final Future<void> Function() onRemove;
   final String? status;
@@ -508,8 +520,8 @@ class _ServiceKeyPanel extends StatelessWidget {
               ),
               Text(
                 connected ? 'Set' : 'Not set',
-                style: const TextStyle(
-                  color: AppColors.text,
+                style: TextStyle(
+                  color: connected ? accent : AppColors.textMuted,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -541,7 +553,7 @@ class _ServiceKeyPanel extends StatelessWidget {
               FilledButton(
                 onPressed: loading ? null : onSave,
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.text,
+                  backgroundColor: accent,
                   foregroundColor: AppColors.background,
                 ),
                 child: Text(loading ? 'Working...' : 'Save'),

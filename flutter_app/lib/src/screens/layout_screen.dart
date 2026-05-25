@@ -77,10 +77,10 @@ class _LayoutScreenState extends State<LayoutScreen> {
         child: _loading
             ? Center(child: CircularProgressIndicator(color: _accent))
             : ListView(
-                padding: const EdgeInsets.fromLTRB(20, 30, 20, 130),
+                padding: const EdgeInsets.fromLTRB(22, 28, 22, 130),
                 children: <Widget>[
                   const _LayoutTitle(title: 'Layout'),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 26),
                   const _SectionLabel('THEME'),
                   _ThemeGrid(
                     settings: _settings,
@@ -111,12 +111,14 @@ class _LayoutScreenState extends State<LayoutScreen> {
                         icon: Icons.style_rounded,
                         title: 'Continue Watching',
                         subtitle: 'Settings for the Continue Watching section.',
+                        accent: _accent,
                         onTap: _openContinueWatching,
                       ),
                       _NavigationRow(
                         icon: Icons.tune_rounded,
                         title: 'Poster Card Style',
                         subtitle: 'Tune card width and corner radius.',
+                        accent: _accent,
                         onTap: _openPosterStyle,
                       ),
                     ],
@@ -197,10 +199,10 @@ class _ContinueWatchingLayoutScreenState
         child: _loading
             ? Center(child: CircularProgressIndicator(color: _accent))
             : ListView(
-                padding: const EdgeInsets.fromLTRB(20, 30, 20, 130),
+                padding: const EdgeInsets.fromLTRB(22, 28, 22, 130),
                 children: <Widget>[
                   const _LayoutTitle(title: 'Continue\nWatching'),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 24),
                   const _SectionLabel('VISIBILITY'),
                   _SettingsCard(
                     children: <Widget>[
@@ -216,8 +218,8 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  const _SectionLabel('Poster Card Style'),
+                  const SizedBox(height: 20),
+                  const _SectionLabel('POSTER CARD STYLE'),
                   Row(
                     children: <Widget>[
                       Expanded(
@@ -247,7 +249,7 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 24),
                   const _SectionLabel('UP NEXT BEHAVIOR'),
                   _SettingsCard(
                     children: <Widget>[
@@ -300,7 +302,7 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 24),
                   const _SectionLabel('ON LAUNCH'),
                   _SettingsCard(
                     children: <Widget>[
@@ -318,7 +320,7 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 24),
                   const _SectionLabel('SORT ORDER'),
                   _SettingsCard(
                     children: <Widget>[
@@ -326,6 +328,7 @@ class _ContinueWatchingLayoutScreenState
                         title: 'Sort Order',
                         subtitle: _sortOrderLabel(
                             _settings.continueWatchingSortOrder),
+                        accent: _accent,
                         onTap: _showSortOrderSheet,
                       ),
                     ],
@@ -403,28 +406,20 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
         child: _loading
             ? Center(child: CircularProgressIndicator(color: _accent))
             : ListView(
-                padding: const EdgeInsets.fromLTRB(20, 30, 20, 130),
+                padding: const EdgeInsets.fromLTRB(22, 28, 22, 130),
                 children: <Widget>[
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: <Widget>[
-                      const Expanded(
-                        child: _LayoutTitle(title: 'Poster Card\nStyle'),
-                      ),
-                      TextButton(
-                        onPressed: _reset,
-                        child: Text(
-                          'Reset to Default',
-                          style: TextStyle(
-                            color: _accent,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ],
+                  const _LayoutTitle(title: 'Poster Card\nStyle'),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _SoftActionButton(
+                      label: 'Reset to Default',
+                      accent: _accent,
+                      onTap: _reset,
+                    ),
                   ),
                   const SizedBox(height: 22),
-                  const _SectionLabel('Poster Card Style'),
+                  const _SectionLabel('POSTER CARD STYLE'),
                   _SettingsCard(
                     children: <Widget>[
                       const Text(
@@ -443,47 +438,43 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            width: width,
-                            height: height,
-                            decoration: BoxDecoration(
-                              color: Color.alphaBlend(
-                                _accent.withOpacity(0.10),
-                                AppColors.cardBackground,
-                              ),
-                              borderRadius: BorderRadius.circular(radius),
-                              border: Border.all(
-                                color: _accent.withOpacity(0.40),
-                              ),
+                      Center(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          width: width,
+                          height: height,
+                          decoration: BoxDecoration(
+                            color: Color.alphaBlend(
+                              _accent.withOpacity(0.10),
+                              AppColors.cardBackground,
                             ),
-                            child: Align(
-                              alignment: Alignment.bottomCenter,
-                              child: Container(
-                                margin: const EdgeInsets.all(16),
-                                height: 5,
-                                width: width * 0.42,
-                                decoration: BoxDecoration(
-                                  color: _accent,
-                                  borderRadius: BorderRadius.circular(99),
-                                ),
+                            borderRadius: BorderRadius.circular(radius),
+                            border: Border.all(
+                              color: _accent.withOpacity(0.40),
+                            ),
+                          ),
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: Container(
+                              margin: const EdgeInsets.all(16),
+                              height: 5,
+                              width: width * 0.42,
+                              decoration: BoxDecoration(
+                                color: _accent,
+                                borderRadius: BorderRadius.circular(99),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 26),
-                          Expanded(
-                            child: Text(
-                              'Width: ${width.round()}dp\nCorner radius: ${radius.round()}dp\nHeight: ${height.round()}dp',
-                              style: const TextStyle(
-                                color: AppColors.text,
-                                fontSize: 15,
-                                height: 1.45,
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _PreviewMetrics(
+                        accent: _accent,
+                        values: <String, String>{
+                          'Width': '${width.round()}dp',
+                          'Radius': '${radius.round()}dp',
+                          'Height': '${height.round()}dp',
+                        },
                       ),
                       const SizedBox(height: 26),
                       Divider(color: Colors.white.withOpacity(0.08)),
@@ -577,70 +568,76 @@ class _ThemeGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return _SettingsCard(
       children: <Widget>[
-        GridView.count(
-          crossAxisCount: 3,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 18,
-          childAspectRatio: 0.92,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          children: LayoutOptions.themes.map((LayoutThemeOption option) {
-            final bool selected = option.id == settings.layoutTheme;
-            return GestureDetector(
-              onTap: () => onSelected(option.id),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: selected ? AppColors.text : Colors.transparent,
-                    width: 2,
+        LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            const double spacing = 12;
+            final double tileWidth = (constraints.maxWidth - (spacing * 2)) / 3;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: 16,
+              children: LayoutOptions.themes.map((LayoutThemeOption option) {
+                final bool selected = option.id == settings.layoutTheme;
+                return GestureDetector(
+                  onTap: () => onSelected(option.id),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: tileWidth,
+                    height: 122,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: selected ? AppColors.text : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: option.color,
+                          ),
+                          child: selected
+                              ? Icon(
+                                  Icons.check_rounded,
+                                  color: option.id == 'white'
+                                      ? AppColors.background
+                                      : AppColors.text,
+                                  size: 28,
+                                )
+                              : null,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          option.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          width: 42,
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: option.color,
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    Container(
-                      width: 54,
-                      height: 54,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: option.color,
-                      ),
-                      child: selected
-                          ? Icon(
-                              Icons.check_rounded,
-                              color: option.id == 'white'
-                                  ? AppColors.background
-                                  : AppColors.text,
-                              size: 28,
-                            )
-                          : null,
-                    ),
-                    const SizedBox(height: 9),
-                    Text(
-                      option.label,
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      width: 42,
-                      height: 3,
-                      decoration: BoxDecoration(
-                        color: option.color,
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                );
+              }).toList(growable: false),
             );
-          }).toList(growable: false),
+          },
         ),
       ],
     );
@@ -657,24 +654,65 @@ class _LayoutTitle extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        IconButton(
-          onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.arrow_back_rounded),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: IconButton(
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+          ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 10),
         Expanded(
           child: Text(
             title,
             style: const TextStyle(
               color: AppColors.text,
-              fontSize: 40,
-              height: 0.96,
+              fontSize: 38,
+              height: 0.98,
               fontWeight: FontWeight.w900,
               letterSpacing: -1.4,
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SoftActionButton extends StatelessWidget {
+  const _SoftActionButton({
+    required this.label,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color accent;
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: accent.withOpacity(0.12),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: accent,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -710,10 +748,10 @@ class _SettingsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
@@ -729,6 +767,7 @@ class _NavigationRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    required this.accent,
     this.icon,
   });
 
@@ -736,6 +775,7 @@ class _NavigationRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -748,10 +788,10 @@ class _NavigationRow extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.08),
+                color: accent.withOpacity(0.16),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: AppColors.text),
+              child: Icon(icon, color: accent),
             ),
       title: Text(
         title,
@@ -765,9 +805,9 @@ class _NavigationRow extends StatelessWidget {
         subtitle,
         style: const TextStyle(color: AppColors.textMuted, height: 1.25),
       ),
-      trailing: const Icon(
+      trailing: Icon(
         Icons.chevron_right_rounded,
-        color: AppColors.textMuted,
+        color: accent.withOpacity(0.78),
       ),
     );
   }
@@ -791,8 +831,9 @@ class _ToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
+      padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
           Expanded(
             child: Column(
@@ -802,23 +843,26 @@ class _ToggleRow extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     color: AppColors.text,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    height: 1.2,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 if (subtitle != null) ...<Widget>[
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 5),
                   Text(
                     subtitle!,
                     style: const TextStyle(
                       color: AppColors.textMuted,
-                      height: 1.28,
+                      fontSize: 12,
+                      height: 1.25,
                     ),
                   ),
                 ],
               ],
             ),
           ),
+          const SizedBox(width: 18),
           Switch(
             value: value,
             activeColor: accent,
@@ -853,11 +897,11 @@ class _ContinueStyleCard extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        height: 158,
-        padding: const EdgeInsets.all(14),
+        height: 150,
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected ? accent.withOpacity(0.85) : AppColors.border,
             width: selected ? 1.5 : 1,
@@ -874,14 +918,14 @@ class _ContinueStyleCard extends StatelessWidget {
                 size: 20,
               ),
             ),
-            const Spacer(),
-            Icon(icon, color: AppColors.textMuted, size: 42),
+            const SizedBox(height: 14),
+            Icon(icon, color: AppColors.textMuted, size: 34),
             const Spacer(),
             Text(
               title,
               style: const TextStyle(
                 color: AppColors.text,
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -890,8 +934,8 @@ class _ContinueStyleCard extends StatelessWidget {
               subtitle,
               style: const TextStyle(
                 color: AppColors.textMuted,
-                fontSize: 11,
-                height: 1.2,
+                fontSize: 10,
+                height: 1.18,
               ),
             ),
           ],
@@ -923,19 +967,121 @@ class _ChoiceWrap extends StatelessWidget {
       runSpacing: 10,
       children: values.map((String value) {
         final bool isSelected = value == selected;
-        return ChoiceChip(
-          label: Text(labelFor(value)),
+        return _ChoicePill(
+          label: labelFor(value),
           selected: isSelected,
-          selectedColor: accent.withOpacity(0.25),
-          backgroundColor: Colors.transparent,
-          side: BorderSide(
-            color: isSelected ? accent.withOpacity(0.55) : AppColors.border,
+          accent: accent,
+          onTap: () => onSelected(value),
+        );
+      }).toList(growable: false),
+    );
+  }
+}
+
+class _ChoicePill extends StatelessWidget {
+  const _ChoicePill({
+    required this.label,
+    required this.selected,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color:
+          selected ? accent.withOpacity(0.26) : Colors.white.withOpacity(0.03),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 84),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? accent.withOpacity(0.65) : AppColors.border,
+            ),
           ),
-          labelStyle: TextStyle(
-            color: isSelected ? AppColors.text : AppColors.textMuted,
-            fontWeight: FontWeight.w800,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              if (selected) ...<Widget>[
+                const Icon(
+                  Icons.check_rounded,
+                  color: AppColors.text,
+                  size: 15,
+                ),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? AppColors.text : AppColors.textMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
           ),
-          onSelected: (_) => onSelected(value),
+        ),
+      ),
+    );
+  }
+}
+
+class _PreviewMetrics extends StatelessWidget {
+  const _PreviewMetrics({
+    required this.values,
+    required this.accent,
+  });
+
+  final Map<String, String> values;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      alignment: WrapAlignment.center,
+      children: values.entries.map((MapEntry<String, String> entry) {
+        return Container(
+          width: 88,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.045),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: accent.withOpacity(0.18)),
+          ),
+          child: Column(
+            children: <Widget>[
+              Text(
+                entry.key,
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                entry.value,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
         );
       }).toList(growable: false),
     );
@@ -955,43 +1101,67 @@ class _SortOrderSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(20),
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(26),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const Text(
-            'Sort Order',
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        padding: const EdgeInsets.fromLTRB(22, 12, 22, 22),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.white.withOpacity(0.06)),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+              color: Color(0xAA000000),
+              blurRadius: 28,
+              offset: Offset(0, -8),
             ),
-          ),
-          const SizedBox(height: 16),
-          _SortOption(
-            value: 'default',
-            selected: selected,
-            title: 'Default',
-            subtitle: 'Sort all items by recency',
-            accent: accent,
-            onSelected: onSelected,
-          ),
-          _SortOption(
-            value: 'streaming',
-            selected: selected,
-            title: 'Streaming Style',
-            subtitle: 'Released items first; upcoming at the end',
-            accent: accent,
-            onSelected: onSelected,
-          ),
-        ],
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Sort Order',
+              style: TextStyle(
+                color: AppColors.text,
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SortOption(
+              value: 'default',
+              selected: selected,
+              title: 'Default',
+              subtitle: 'Sort all items by recency',
+              accent: accent,
+              onSelected: onSelected,
+            ),
+            const SizedBox(height: 8),
+            _SortOption(
+              value: 'streaming',
+              selected: selected,
+              title: 'Streaming Style',
+              subtitle: 'Released items first; upcoming at the end',
+              accent: accent,
+              onSelected: onSelected,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1017,24 +1187,70 @@ class _SortOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isSelected = value == selected;
-    return ListTile(
-      onTap: () => onSelected(value),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      tileColor: isSelected ? Colors.white.withOpacity(0.12) : null,
-      title: Text(
-        title,
-        style: const TextStyle(
-          color: AppColors.text,
-          fontWeight: FontWeight.w800,
+    return Material(
+      color: isSelected ? Colors.white.withOpacity(0.09) : Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: () => onSelected(value),
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isSelected ? accent.withOpacity(0.34) : Colors.transparent,
+            ),
+          ),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 13,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSelected ? accent : Colors.white.withOpacity(0.06),
+                  border: Border.all(
+                    color: isSelected ? accent : Colors.white.withOpacity(0.14),
+                  ),
+                ),
+                child: isSelected
+                    ? const Icon(
+                        Icons.check_rounded,
+                        color: AppColors.background,
+                        size: 20,
+                      )
+                    : null,
+              ),
+            ],
+          ),
         ),
       ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(color: AppColors.textMuted),
-      ),
-      trailing: isSelected
-          ? Icon(Icons.check_rounded, color: accent)
-          : const SizedBox.shrink(),
     );
   }
 }

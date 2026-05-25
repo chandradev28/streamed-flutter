@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../models/torbox_models.dart';
+import '../services/app_settings_repository.dart';
 import '../theme/app_colors.dart';
+import '../theme/layout_options.dart';
 import 'connected_services_screen.dart';
 import 'mdblist_ratings_screen.dart';
 import 'tmdb_enrichment_screen.dart';
@@ -34,61 +37,68 @@ class IntegrationsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 34, 24, 32),
-          children: <Widget>[
-            Row(
+    return ValueListenableBuilder<AppSettings>(
+      valueListenable: AppSettingsRepository.settingsNotifier,
+      builder: (BuildContext context, AppSettings settings, Widget? child) {
+        final Color accent = LayoutOptions.accentFor(settings);
+        return Scaffold(
+          backgroundColor: LayoutOptions.backgroundFor(settings),
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(24, 34, 24, 32),
               children: <Widget>[
-                IconButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  icon: const Icon(Icons.arrow_back_rounded),
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Text(
-                    'Integrations',
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: 40,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -1.2,
+                Row(
+                  children: <Widget>[
+                    IconButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: Icon(Icons.arrow_back_rounded, color: accent),
                     ),
-                  ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Integrations',
+                        style: TextStyle(
+                          color: AppColors.text,
+                          fontSize: 40,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -1.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 26),
+                const _SectionLabel('INTEGRATIONS'),
+                _IntegrationGroup(
+                  children: <Widget>[
+                    _IntegrationTile(
+                      icon: Icons.movie_filter_rounded,
+                      title: 'TMDB Enrichment',
+                      subtitle: 'Metadata enrichment controls',
+                      accent: accent,
+                      onTap: () => _openTmdbEnrichment(context),
+                    ),
+                    _IntegrationTile(
+                      icon: Icons.star_rate_rounded,
+                      title: 'MDBList Ratings',
+                      subtitle: 'External ratings providers',
+                      accent: accent,
+                      onTap: () => _openMdbListRatings(context),
+                    ),
+                    _IntegrationTile(
+                      icon: Icons.cloud_queue_rounded,
+                      title: 'Connected Services',
+                      subtitle: 'Connect accounts for links and library access',
+                      accent: accent,
+                      onTap: () => _openConnectedServices(context),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 26),
-            const _SectionLabel('INTEGRATIONS'),
-            _IntegrationGroup(
-              children: <Widget>[
-                _IntegrationTile(
-                  icon: Icons.movie_filter_rounded,
-                  title: 'TMDB Enrichment',
-                  subtitle: 'Metadata enrichment controls',
-                  badgeColor: const Color(0xFF223936),
-                  onTap: () => _openTmdbEnrichment(context),
-                ),
-                _IntegrationTile(
-                  icon: Icons.star_rate_rounded,
-                  title: 'MDBList Ratings',
-                  subtitle: 'External ratings providers',
-                  badgeColor: const Color(0xFF1D3E6E),
-                  onTap: () => _openMdbListRatings(context),
-                ),
-                _IntegrationTile(
-                  icon: Icons.cloud_queue_rounded,
-                  title: 'Connected Services',
-                  subtitle: 'Connect accounts for links and library access',
-                  onTap: () => _openConnectedServices(context),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -139,14 +149,14 @@ class _IntegrationTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
-    this.badgeColor,
+    required this.accent,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
-  final Color? badgeColor;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -157,10 +167,10 @@ class _IntegrationTile extends StatelessWidget {
         width: 46,
         height: 46,
         decoration: BoxDecoration(
-          color: badgeColor ?? Colors.white.withOpacity(0.09),
+          color: accent.withOpacity(0.16),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Icon(icon, color: AppColors.text),
+        child: Icon(icon, color: accent),
       ),
       title: Text(
         title,
@@ -178,9 +188,9 @@ class _IntegrationTile extends StatelessWidget {
           height: 1.35,
         ),
       ),
-      trailing: const Icon(
+      trailing: Icon(
         Icons.chevron_right_rounded,
-        color: AppColors.textMuted,
+        color: accent.withOpacity(0.78),
       ),
     );
   }

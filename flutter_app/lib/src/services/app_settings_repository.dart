@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../models/torbox_models.dart';
 import 'local_json_store.dart';
 
@@ -10,13 +12,19 @@ class AppSettingsRepository {
 
   final LocalJsonStore _store;
 
+  static final ValueNotifier<AppSettings> settingsNotifier =
+      ValueNotifier<AppSettings>(const AppSettings());
+
   Future<AppSettings> loadSettings() async {
     final Map<String, dynamic> payload = await _readMap();
-    return AppSettings.fromJson(payload);
+    final AppSettings settings = AppSettings.fromJson(payload);
+    settingsNotifier.value = settings;
+    return settings;
   }
 
   Future<void> saveSettings(AppSettings settings) async {
     await _writeMap(settings.toJson());
+    settingsNotifier.value = settings;
   }
 
   Future<String?> getTorBoxApiKey() async {

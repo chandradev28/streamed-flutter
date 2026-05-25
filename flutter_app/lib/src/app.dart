@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'models/torbox_models.dart';
 import 'screens/home_shell.dart';
+import 'services/app_settings_repository.dart';
 import 'theme/app_theme.dart';
+import 'theme/layout_options.dart';
 
-class StreamedApp extends StatelessWidget {
+class StreamedApp extends StatefulWidget {
   const StreamedApp({
     super.key,
     this.home,
@@ -12,12 +15,30 @@ class StreamedApp extends StatelessWidget {
   final Widget? home;
 
   @override
+  State<StreamedApp> createState() => _StreamedAppState();
+}
+
+class _StreamedAppState extends State<StreamedApp> {
+  final AppSettingsRepository _settingsRepository = AppSettingsRepository();
+
+  @override
+  void initState() {
+    super.initState();
+    _settingsRepository.loadSettings();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Streamed Flutter',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark(),
-      home: home ?? const HomeShell(),
+    return ValueListenableBuilder<AppSettings>(
+      valueListenable: AppSettingsRepository.settingsNotifier,
+      builder: (BuildContext context, AppSettings settings, Widget? child) {
+        return MaterialApp(
+          title: 'Streamed Flutter',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.dark(accent: LayoutOptions.accentFor(settings)),
+          home: widget.home ?? const HomeShell(),
+        );
+      },
     );
   }
 }

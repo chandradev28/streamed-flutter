@@ -8,6 +8,7 @@ import '../models/watch_history_item.dart';
 import '../services/app_settings_repository.dart';
 import '../services/tmdb_image.dart';
 import '../services/tmdb_media_service.dart';
+import '../services/trakt_api_service.dart';
 import '../services/watch_history_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/layout_options.dart';
@@ -21,15 +22,18 @@ class HomeScreen extends StatefulWidget {
     MediaCatalogService? mediaService,
     ContinueWatchingRepository? watchHistoryRepository,
     AppSettingsRepository? settingsRepository,
+    TraktApiService? traktApiService,
     this.onSettingsChanged,
   })  : mediaService = mediaService ?? TmdbMediaService(),
         watchHistoryRepository =
             watchHistoryRepository ?? WatchHistoryRepository(),
-        settingsRepository = settingsRepository ?? AppSettingsRepository();
+        settingsRepository = settingsRepository ?? AppSettingsRepository(),
+        traktApiService = traktApiService ?? TraktApiService();
 
   final MediaCatalogService mediaService;
   final ContinueWatchingRepository watchHistoryRepository;
   final AppSettingsRepository settingsRepository;
+  final TraktApiService traktApiService;
   final Future<void> Function()? onSettingsChanged;
 
   @override
@@ -41,6 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<MediaSummary> _trending = const <MediaSummary>[];
   List<MediaSummary> _trendingSeries = const <MediaSummary>[];
   List<MediaSummary> _newReleases = const <MediaSummary>[];
+  List<MediaSummary> _traktWatchlist = const <MediaSummary>[];
   List<WatchHistoryItem> _continueWatching = const <WatchHistoryItem>[];
   AppSettings _settings = const AppSettings();
   bool _loading = true;
@@ -81,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _continueWatching,
         () => widget.watchHistoryRepository.getContinueWatching(20),
       ),
+      _loadTraktWatchlist(),
     ]);
 
     if (!mounted) {
@@ -95,8 +101,57 @@ class _HomeScreenState extends State<HomeScreen> {
       _continueWatching = _sortContinueWatching(
         results[4] as List<WatchHistoryItem>,
       );
+      _traktWatchlist = results[5] as List<MediaSummary>;
       _loading = false;
     });
+  }
+
+  Future<List<MediaSummary>> _loadTraktWatchlist() async {
+    try {
+      final AppSettings settings =
+          await widget.settingsRepository.loadSettings();
+      if ((settings.traktAccessToken ?? '').isEmpty ||
+          !settings.traktSyncWatchlistEnabled) {
+        return _traktWatchlist;
+      }
+      final List<TraktWatchlistItem> items =
+          await widget.traktApiService.getWatchlist();
+      final List<MediaSummary> summaries = <MediaSummary>[];
+      for (final TraktWatchlistItem item in items.take(10)) {
+        final int? tmdbId = item.tmdbId;
+        if (tmdbId == null) {
+          continue;
+        }
+        try {
+          final MediaDetail detail =
+              await widget.mediaService.getMediaDetail(tmdbId, item.mediaType);
+          summaries.add(
+            MediaSummary(
+              id: detail.id,
+              mediaType: detail.mediaType,
+              title: detail.title,
+              posterPath: detail.posterPath,
+              backdropPath: detail.backdropPath,
+              releaseDate: detail.releaseDate,
+            ),
+          );
+        } catch (_) {
+          summaries.add(
+            MediaSummary(
+              id: tmdbId,
+              mediaType: item.mediaType,
+              title: item.title,
+              posterPath: null,
+              backdropPath: null,
+              releaseDate: item.year?.toString() ?? '',
+            ),
+          );
+        }
+      }
+      return summaries;
+    } catch (_) {
+      return _traktWatchlist;
+    }
   }
 
   Future<List<T>> _loadOrKeep<T>(
@@ -267,9 +322,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
-                      if (_loading) ...<Widget>[
+                      if ((_settings.traktAccessToken ?? '').isNotEmpty &&
+                          _settings.traktSyncProgressEnabled) ...<Widget>[
                         const SizedBox(height: 14),
-                        const _TorBoxSetupPrompt(),
+                        _TraktSyncCard(
+                          username: _settings.traktUsername,
+                          accent: accent,
+                          onTap: _openProfile,
+                        ),
                       ],
                     ],
                   ),
@@ -301,6 +361,23 @@ class _HomeScreenState extends State<HomeScreen> {
                     accent: accent,
                     onOpen: _openContinueWatching,
                     onRemove: _removeHistory,
+                  ),
+                ),
+              ],
+              if ((_settings.traktAccessToken ?? '').isNotEmpty &&
+                  _settings.traktSyncWatchlistEnabled &&
+                  _traktWatchlist.isNotEmpty) ...<Widget>[
+                _SectionHeader(
+                  title: 'From Your Trakt Watchlist',
+                  actionLabel: 'Synced',
+                  accent: accent,
+                ),
+                SliverToBoxAdapter(
+                  child: _TopTenRail(
+                    items: _traktWatchlist,
+                    settings: _settings,
+                    accent: accent,
+                    onOpen: _openMedia,
                   ),
                 ),
               ],
@@ -381,6 +458,77 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+class _TraktSyncCard extends StatelessWidget {
+  const _TraktSyncCard({
+    required this.username,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final String? username;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Color.alphaBlend(
+        accent.withOpacity(0.10),
+        AppColors.cardBackground,
+      ),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(Icons.checklist_rtl_rounded, color: accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      'Trakt sync active',
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      (username ?? '').isEmpty
+                          ? 'Scrobbling and progress sync are enabled.'
+                          : 'Signed in as $username',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: accent),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SquareHeaderButton extends StatelessWidget {
   const _SquareHeaderButton({
     super.key,
@@ -405,68 +553,6 @@ class _SquareHeaderButton extends StatelessWidget {
           color: const Color(0xD9121217),
         ),
         child: Icon(icon, color: AppColors.text, size: 20),
-      ),
-    );
-  }
-}
-
-class _TorBoxSetupPrompt extends StatelessWidget {
-  const _TorBoxSetupPrompt();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
-      ),
-      child: Row(
-        children: <Widget>[
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.key_rounded,
-              color: AppColors.text,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'Set up TorBox anytime',
-                  style: TextStyle(
-                    color: AppColors.text,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Use the profile button while movies load.',
-                  style: TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Icon(
-            Icons.arrow_upward_rounded,
-            color: AppColors.textMuted,
-            size: 18,
-          ),
-        ],
       ),
     );
   }

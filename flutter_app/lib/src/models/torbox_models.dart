@@ -28,6 +28,18 @@ class AppSettings {
     this.mdbListTraktEnabled = true,
     this.mdbListLetterboxdEnabled = true,
     this.mdbListAudienceScoreEnabled = true,
+    this.traktClientId,
+    this.traktClientSecret,
+    this.traktAccessToken,
+    this.traktRefreshToken,
+    this.traktTokenExpiresAt,
+    this.traktUsername,
+    this.traktScrobbleEnabled = true,
+    this.traktSyncWatchlistEnabled = true,
+    this.traktSyncProgressEnabled = true,
+    this.traktSyncHistoryEnabled = true,
+    this.traktSyncListsEnabled = false,
+    this.traktLastSyncAt,
     this.layoutTheme = 'white',
     this.amoledBlackEnabled = true,
     this.continueWatchingEnabled = true,
@@ -42,6 +54,25 @@ class AppSettings {
     this.posterRadiusPreset = 'rounded',
     this.posterLandscapeEnabled = false,
     this.posterHideLabels = false,
+    this.playbackAutoPlay = true,
+    this.playbackPreferExternalPlayer = false,
+    this.playbackResumeEnabled = true,
+    this.playbackSaveProgress = true,
+    this.playbackSkipSeconds = 10,
+    this.playbackHoldToSpeed = true,
+    this.playbackSpeedControls = true,
+    this.playbackDefaultSpeed = 1.0,
+    this.playbackHoldSpeed = 2.0,
+    this.playbackPreferredSubtitleLanguage = 'en',
+    this.playbackSecondarySubtitleLanguage = '',
+    this.playbackPreferredAudioLanguage = '',
+    this.playbackShowFilesButton = true,
+    this.playbackShowSubtitlesButton = true,
+    this.playbackShowAudioButton = true,
+    this.playbackShowExternalButton = true,
+    this.playbackAutoPlayNextEpisode = false,
+    this.playbackBingeGroupNextEpisode = true,
+    this.playbackNextEpisodeThreshold = 90,
   });
 
   final String? torBoxApiKey;
@@ -72,6 +103,18 @@ class AppSettings {
   final bool mdbListTraktEnabled;
   final bool mdbListLetterboxdEnabled;
   final bool mdbListAudienceScoreEnabled;
+  final String? traktClientId;
+  final String? traktClientSecret;
+  final String? traktAccessToken;
+  final String? traktRefreshToken;
+  final int? traktTokenExpiresAt;
+  final String? traktUsername;
+  final bool traktScrobbleEnabled;
+  final bool traktSyncWatchlistEnabled;
+  final bool traktSyncProgressEnabled;
+  final bool traktSyncHistoryEnabled;
+  final bool traktSyncListsEnabled;
+  final int? traktLastSyncAt;
   final String layoutTheme;
   final bool amoledBlackEnabled;
   final bool continueWatchingEnabled;
@@ -86,6 +129,25 @@ class AppSettings {
   final String posterRadiusPreset;
   final bool posterLandscapeEnabled;
   final bool posterHideLabels;
+  final bool playbackAutoPlay;
+  final bool playbackPreferExternalPlayer;
+  final bool playbackResumeEnabled;
+  final bool playbackSaveProgress;
+  final int playbackSkipSeconds;
+  final bool playbackHoldToSpeed;
+  final bool playbackSpeedControls;
+  final double playbackDefaultSpeed;
+  final double playbackHoldSpeed;
+  final String playbackPreferredSubtitleLanguage;
+  final String playbackSecondarySubtitleLanguage;
+  final String playbackPreferredAudioLanguage;
+  final bool playbackShowFilesButton;
+  final bool playbackShowSubtitlesButton;
+  final bool playbackShowAudioButton;
+  final bool playbackShowExternalButton;
+  final bool playbackAutoPlayNextEpisode;
+  final bool playbackBingeGroupNextEpisode;
+  final int playbackNextEpisodeThreshold;
 
   AppSettings copyWith({
     String? torBoxApiKey,
@@ -120,6 +182,20 @@ class AppSettings {
     bool? mdbListTraktEnabled,
     bool? mdbListLetterboxdEnabled,
     bool? mdbListAudienceScoreEnabled,
+    String? traktClientId,
+    String? traktClientSecret,
+    String? traktAccessToken,
+    String? traktRefreshToken,
+    int? traktTokenExpiresAt,
+    String? traktUsername,
+    bool clearTraktClientSecret = false,
+    bool clearTraktToken = false,
+    bool? traktScrobbleEnabled,
+    bool? traktSyncWatchlistEnabled,
+    bool? traktSyncProgressEnabled,
+    bool? traktSyncHistoryEnabled,
+    bool? traktSyncListsEnabled,
+    int? traktLastSyncAt,
     String? layoutTheme,
     bool? amoledBlackEnabled,
     bool? continueWatchingEnabled,
@@ -134,6 +210,25 @@ class AppSettings {
     String? posterRadiusPreset,
     bool? posterLandscapeEnabled,
     bool? posterHideLabels,
+    bool? playbackAutoPlay,
+    bool? playbackPreferExternalPlayer,
+    bool? playbackResumeEnabled,
+    bool? playbackSaveProgress,
+    int? playbackSkipSeconds,
+    bool? playbackHoldToSpeed,
+    bool? playbackSpeedControls,
+    double? playbackDefaultSpeed,
+    double? playbackHoldSpeed,
+    String? playbackPreferredSubtitleLanguage,
+    String? playbackSecondarySubtitleLanguage,
+    String? playbackPreferredAudioLanguage,
+    bool? playbackShowFilesButton,
+    bool? playbackShowSubtitlesButton,
+    bool? playbackShowAudioButton,
+    bool? playbackShowExternalButton,
+    bool? playbackAutoPlayNextEpisode,
+    bool? playbackBingeGroupNextEpisode,
+    int? playbackNextEpisodeThreshold,
   }) {
     return AppSettings(
       torBoxApiKey: clearApiKey ? null : (torBoxApiKey ?? this.torBoxApiKey),
@@ -178,6 +273,30 @@ class AppSettings {
           mdbListLetterboxdEnabled ?? this.mdbListLetterboxdEnabled,
       mdbListAudienceScoreEnabled:
           mdbListAudienceScoreEnabled ?? this.mdbListAudienceScoreEnabled,
+      traktClientId: traktClientId ?? this.traktClientId,
+      traktClientSecret: clearTraktClientSecret
+          ? null
+          : (traktClientSecret ?? this.traktClientSecret),
+      traktAccessToken:
+          clearTraktToken ? null : (traktAccessToken ?? this.traktAccessToken),
+      traktRefreshToken: clearTraktToken
+          ? null
+          : (traktRefreshToken ?? this.traktRefreshToken),
+      traktTokenExpiresAt: clearTraktToken
+          ? null
+          : (traktTokenExpiresAt ?? this.traktTokenExpiresAt),
+      traktUsername:
+          clearTraktToken ? null : (traktUsername ?? this.traktUsername),
+      traktScrobbleEnabled: traktScrobbleEnabled ?? this.traktScrobbleEnabled,
+      traktSyncWatchlistEnabled:
+          traktSyncWatchlistEnabled ?? this.traktSyncWatchlistEnabled,
+      traktSyncProgressEnabled:
+          traktSyncProgressEnabled ?? this.traktSyncProgressEnabled,
+      traktSyncHistoryEnabled:
+          traktSyncHistoryEnabled ?? this.traktSyncHistoryEnabled,
+      traktSyncListsEnabled:
+          traktSyncListsEnabled ?? this.traktSyncListsEnabled,
+      traktLastSyncAt: traktLastSyncAt ?? this.traktLastSyncAt,
       layoutTheme: layoutTheme ?? this.layoutTheme,
       amoledBlackEnabled: amoledBlackEnabled ?? this.amoledBlackEnabled,
       continueWatchingEnabled:
@@ -202,6 +321,38 @@ class AppSettings {
       posterLandscapeEnabled:
           posterLandscapeEnabled ?? this.posterLandscapeEnabled,
       posterHideLabels: posterHideLabels ?? this.posterHideLabels,
+      playbackAutoPlay: playbackAutoPlay ?? this.playbackAutoPlay,
+      playbackPreferExternalPlayer:
+          playbackPreferExternalPlayer ?? this.playbackPreferExternalPlayer,
+      playbackResumeEnabled:
+          playbackResumeEnabled ?? this.playbackResumeEnabled,
+      playbackSaveProgress: playbackSaveProgress ?? this.playbackSaveProgress,
+      playbackSkipSeconds: playbackSkipSeconds ?? this.playbackSkipSeconds,
+      playbackHoldToSpeed: playbackHoldToSpeed ?? this.playbackHoldToSpeed,
+      playbackSpeedControls:
+          playbackSpeedControls ?? this.playbackSpeedControls,
+      playbackDefaultSpeed: playbackDefaultSpeed ?? this.playbackDefaultSpeed,
+      playbackHoldSpeed: playbackHoldSpeed ?? this.playbackHoldSpeed,
+      playbackPreferredSubtitleLanguage: playbackPreferredSubtitleLanguage ??
+          this.playbackPreferredSubtitleLanguage,
+      playbackSecondarySubtitleLanguage: playbackSecondarySubtitleLanguage ??
+          this.playbackSecondarySubtitleLanguage,
+      playbackPreferredAudioLanguage:
+          playbackPreferredAudioLanguage ?? this.playbackPreferredAudioLanguage,
+      playbackShowFilesButton:
+          playbackShowFilesButton ?? this.playbackShowFilesButton,
+      playbackShowSubtitlesButton:
+          playbackShowSubtitlesButton ?? this.playbackShowSubtitlesButton,
+      playbackShowAudioButton:
+          playbackShowAudioButton ?? this.playbackShowAudioButton,
+      playbackShowExternalButton:
+          playbackShowExternalButton ?? this.playbackShowExternalButton,
+      playbackAutoPlayNextEpisode:
+          playbackAutoPlayNextEpisode ?? this.playbackAutoPlayNextEpisode,
+      playbackBingeGroupNextEpisode:
+          playbackBingeGroupNextEpisode ?? this.playbackBingeGroupNextEpisode,
+      playbackNextEpisodeThreshold:
+          playbackNextEpisodeThreshold ?? this.playbackNextEpisodeThreshold,
     );
   }
 
@@ -242,6 +393,20 @@ class AppSettings {
           json['mdbListLetterboxdEnabled'] as bool? ?? true,
       mdbListAudienceScoreEnabled:
           json['mdbListAudienceScoreEnabled'] as bool? ?? true,
+      traktClientId: json['traktClientId'] as String?,
+      traktClientSecret: json['traktClientSecret'] as String?,
+      traktAccessToken: json['traktAccessToken'] as String?,
+      traktRefreshToken: json['traktRefreshToken'] as String?,
+      traktTokenExpiresAt: (json['traktTokenExpiresAt'] as num?)?.toInt(),
+      traktUsername: json['traktUsername'] as String?,
+      traktScrobbleEnabled: json['traktScrobbleEnabled'] as bool? ?? true,
+      traktSyncWatchlistEnabled:
+          json['traktSyncWatchlistEnabled'] as bool? ?? true,
+      traktSyncProgressEnabled:
+          json['traktSyncProgressEnabled'] as bool? ?? true,
+      traktSyncHistoryEnabled: json['traktSyncHistoryEnabled'] as bool? ?? true,
+      traktSyncListsEnabled: json['traktSyncListsEnabled'] as bool? ?? false,
+      traktLastSyncAt: (json['traktLastSyncAt'] as num?)?.toInt(),
       layoutTheme: json['layoutTheme'] as String? ?? 'white',
       amoledBlackEnabled: json['amoledBlackEnabled'] as bool? ?? true,
       continueWatchingEnabled: json['continueWatchingEnabled'] as bool? ?? true,
@@ -262,6 +427,35 @@ class AppSettings {
       posterRadiusPreset: json['posterRadiusPreset'] as String? ?? 'rounded',
       posterLandscapeEnabled: json['posterLandscapeEnabled'] as bool? ?? false,
       posterHideLabels: json['posterHideLabels'] as bool? ?? false,
+      playbackAutoPlay: json['playbackAutoPlay'] as bool? ?? true,
+      playbackPreferExternalPlayer:
+          json['playbackPreferExternalPlayer'] as bool? ?? false,
+      playbackResumeEnabled: json['playbackResumeEnabled'] as bool? ?? true,
+      playbackSaveProgress: json['playbackSaveProgress'] as bool? ?? true,
+      playbackSkipSeconds: (json['playbackSkipSeconds'] as num?)?.toInt() ?? 10,
+      playbackHoldToSpeed: json['playbackHoldToSpeed'] as bool? ?? true,
+      playbackSpeedControls: json['playbackSpeedControls'] as bool? ?? true,
+      playbackDefaultSpeed:
+          (json['playbackDefaultSpeed'] as num?)?.toDouble() ?? 1.0,
+      playbackHoldSpeed: (json['playbackHoldSpeed'] as num?)?.toDouble() ?? 2.0,
+      playbackPreferredSubtitleLanguage:
+          json['playbackPreferredSubtitleLanguage'] as String? ?? 'en',
+      playbackSecondarySubtitleLanguage:
+          json['playbackSecondarySubtitleLanguage'] as String? ?? '',
+      playbackPreferredAudioLanguage:
+          json['playbackPreferredAudioLanguage'] as String? ?? '',
+      playbackShowFilesButton: json['playbackShowFilesButton'] as bool? ?? true,
+      playbackShowSubtitlesButton:
+          json['playbackShowSubtitlesButton'] as bool? ?? true,
+      playbackShowAudioButton: json['playbackShowAudioButton'] as bool? ?? true,
+      playbackShowExternalButton:
+          json['playbackShowExternalButton'] as bool? ?? true,
+      playbackAutoPlayNextEpisode:
+          json['playbackAutoPlayNextEpisode'] as bool? ?? false,
+      playbackBingeGroupNextEpisode:
+          json['playbackBingeGroupNextEpisode'] as bool? ?? true,
+      playbackNextEpisodeThreshold:
+          (json['playbackNextEpisodeThreshold'] as num?)?.toInt() ?? 90,
     );
   }
 
@@ -295,6 +489,18 @@ class AppSettings {
       'mdbListTraktEnabled': mdbListTraktEnabled,
       'mdbListLetterboxdEnabled': mdbListLetterboxdEnabled,
       'mdbListAudienceScoreEnabled': mdbListAudienceScoreEnabled,
+      'traktClientId': traktClientId,
+      'traktClientSecret': traktClientSecret,
+      'traktAccessToken': traktAccessToken,
+      'traktRefreshToken': traktRefreshToken,
+      'traktTokenExpiresAt': traktTokenExpiresAt,
+      'traktUsername': traktUsername,
+      'traktScrobbleEnabled': traktScrobbleEnabled,
+      'traktSyncWatchlistEnabled': traktSyncWatchlistEnabled,
+      'traktSyncProgressEnabled': traktSyncProgressEnabled,
+      'traktSyncHistoryEnabled': traktSyncHistoryEnabled,
+      'traktSyncListsEnabled': traktSyncListsEnabled,
+      'traktLastSyncAt': traktLastSyncAt,
       'layoutTheme': layoutTheme,
       'amoledBlackEnabled': amoledBlackEnabled,
       'continueWatchingEnabled': continueWatchingEnabled,
@@ -310,6 +516,25 @@ class AppSettings {
       'posterRadiusPreset': posterRadiusPreset,
       'posterLandscapeEnabled': posterLandscapeEnabled,
       'posterHideLabels': posterHideLabels,
+      'playbackAutoPlay': playbackAutoPlay,
+      'playbackPreferExternalPlayer': playbackPreferExternalPlayer,
+      'playbackResumeEnabled': playbackResumeEnabled,
+      'playbackSaveProgress': playbackSaveProgress,
+      'playbackSkipSeconds': playbackSkipSeconds,
+      'playbackHoldToSpeed': playbackHoldToSpeed,
+      'playbackSpeedControls': playbackSpeedControls,
+      'playbackDefaultSpeed': playbackDefaultSpeed,
+      'playbackHoldSpeed': playbackHoldSpeed,
+      'playbackPreferredSubtitleLanguage': playbackPreferredSubtitleLanguage,
+      'playbackSecondarySubtitleLanguage': playbackSecondarySubtitleLanguage,
+      'playbackPreferredAudioLanguage': playbackPreferredAudioLanguage,
+      'playbackShowFilesButton': playbackShowFilesButton,
+      'playbackShowSubtitlesButton': playbackShowSubtitlesButton,
+      'playbackShowAudioButton': playbackShowAudioButton,
+      'playbackShowExternalButton': playbackShowExternalButton,
+      'playbackAutoPlayNextEpisode': playbackAutoPlayNextEpisode,
+      'playbackBingeGroupNextEpisode': playbackBingeGroupNextEpisode,
+      'playbackNextEpisodeThreshold': playbackNextEpisodeThreshold,
     };
   }
 }

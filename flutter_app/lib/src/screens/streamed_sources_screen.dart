@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../models/torbox_models.dart';
 import '../services/app_settings_repository.dart';
-import '../services/engine_runtime_service.dart';
 import '../services/episode_parser.dart';
 import '../services/real_debrid_api_service.dart';
 import '../services/stream_catalog_service.dart';
 import '../services/stremio_addons_service.dart';
 import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
-import 'torboxers_screen.dart';
 import 'video_player_screen.dart';
 
 class StreamedSourcesScreen extends StatefulWidget {
@@ -28,13 +26,11 @@ class StreamedSourcesScreen extends StatefulWidget {
     TorBoxApiService? torBoxApiService,
     RealDebridApiService? realDebridApiService,
     AppSettingsRepository? settingsRepository,
-    EngineRuntimeService? engineRuntimeService,
   })  : streamCatalogService = streamCatalogService ?? StreamCatalogService(),
         addonsService = addonsService ?? StremioAddonsService(),
         torBoxApiService = torBoxApiService ?? TorBoxApiService(),
         realDebridApiService = realDebridApiService ?? RealDebridApiService(),
-        settingsRepository = settingsRepository ?? AppSettingsRepository(),
-        engineRuntimeService = engineRuntimeService ?? EngineRuntimeService();
+        settingsRepository = settingsRepository ?? AppSettingsRepository();
 
   final String title;
   final String? posterPath;
@@ -49,7 +45,6 @@ class StreamedSourcesScreen extends StatefulWidget {
   final TorBoxApiService torBoxApiService;
   final RealDebridApiService realDebridApiService;
   final AppSettingsRepository settingsRepository;
-  final EngineRuntimeService engineRuntimeService;
 
   @override
   State<StreamedSourcesScreen> createState() => _StreamedSourcesScreenState();
@@ -62,6 +57,7 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
   bool _loading = true;
   String? _message;
   String? _selectedSource;
+  bool _cachedOnly = false;
   Map<String, int> _sourceCounts = const <String, int>{};
   Map<String, String> _sourceErrors = const <String, String>{};
 
@@ -80,14 +76,23 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
   }
 
   List<StreamSource> get _visibleResults {
-    if (_selectedSource == null) {
-      return _results;
-    }
     return _results
         .where(
-          (StreamSource source) => source.sourceDisplayName == _selectedSource,
+          (StreamSource source) =>
+              (_selectedSource == null ||
+                  source.sourceDisplayName == _selectedSource) &&
+              (!_cachedOnly || source.isCached),
         )
         .toList(growable: false);
+  }
+
+  List<String> get _visibleGroupNames {
+    final List<String> values = _visibleResults
+        .map((StreamSource source) => source.sourceDisplayName)
+        .toSet()
+        .toList(growable: false)
+      ..sort();
+    return values;
   }
 
   bool _isSeasonPackSource(StreamSource source) {
@@ -98,14 +103,6 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
     ].join('\n');
     return isSeasonPackTitle(text);
   }
-
-  List<StreamSource> get _visibleEpisodeResults => _visibleResults
-      .where((StreamSource source) => !_isSeasonPackSource(source))
-      .toList(growable: false);
-
-  List<StreamSource> get _visibleSeasonPackResults => _visibleResults
-      .where((StreamSource source) => _isSeasonPackSource(source))
-      .toList(growable: false);
 
   @override
   void initState() {
@@ -177,24 +174,7 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
       }
 
       if (merged.isEmpty) {
-        final KeywordEngineSearchResult engineFallback =
-            await widget.engineRuntimeService.searchCachedKeyword(
-          _engineFallbackQuery,
-        );
-        sourceCounts.addAll(engineFallback.diagnostics.sourceCounts);
-        sourceErrors.addAll(engineFallback.diagnostics.sourceErrors);
-        for (final StreamSource item in engineFallback.streams) {
-          if (seen.add(item.infoHash?.toLowerCase() ?? item.id)) {
-            merged.add(item);
-          }
-        }
-        if (engineFallback.streams.isNotEmpty) {
-          _message =
-              'No addon streams came back, so Streamed used cached Torboxers engine results.';
-        } else {
-          _message ??=
-              'No addon streams or cached Torboxers engine results found.';
-        }
+        _message ??= 'No addon streams found for this title.';
       }
 
       merged.sort((StreamSource a, StreamSource b) {
@@ -214,6 +194,7 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
     setState(() {
       _results = merged;
       _selectedSource = null;
+      _cachedOnly = false;
       _sourceCounts = sourceCounts;
       _sourceErrors = sourceErrors;
       _loading = false;
@@ -223,35 +204,16 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
     });
   }
 
-  String get _engineFallbackQuery {
-    final String base =
-        widget.episodeName == null || widget.episodeName!.isEmpty
-            ? widget.title
-            : '${widget.title} ${widget.episodeName}';
-    if (!_isEpisodeContext) {
-      return base;
-    }
-    return '$base S${widget.seasonNumber.toString().padLeft(2, '0')}E${widget.episodeNumber.toString().padLeft(2, '0')}';
-  }
-
   Future<void> _playSource(StreamSource source) async {
+    if (source.hasTorrentSource && _settings.resolvePlayableLinksEnabled) {
+      final bool played = await _playResolvedTorrentSource(source);
+      if (played) {
+        return;
+      }
+    }
+
     if (source.isDirectUrl) {
-      Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (BuildContext context) => VideoPlayerScreen(
-            title: widget.episodeName ?? widget.title,
-            posterUrl: widget.posterPath,
-            tmdbId: widget.tmdbId,
-            mediaType: widget.mediaType,
-            seasonNumber: widget.seasonNumber,
-            episodeNumber: widget.episodeNumber,
-            episodeName: widget.episodeName,
-            initialVideoUrl: source.directUrl,
-            provider: source.sourceDisplayName,
-            streamHeaders: source.streamHeaders,
-          ),
-        ),
-      );
+      _openDirectUrl(source);
       return;
     }
 
@@ -260,6 +222,9 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
     }
 
     if (!_settings.resolvePlayableLinksEnabled) {
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -270,11 +235,42 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
       return;
     }
 
+    final bool played = await _playResolvedTorrentSource(source);
+    if (!mounted || played) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Could not prepare this source in a connected service.'),
+      ),
+    );
+  }
+
+  void _openDirectUrl(StreamSource source) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => VideoPlayerScreen(
+          title: widget.episodeName ?? widget.title,
+          posterUrl: widget.posterPath,
+          tmdbId: widget.tmdbId,
+          mediaType: widget.mediaType,
+          seasonNumber: widget.seasonNumber,
+          episodeNumber: widget.episodeNumber,
+          episodeName: widget.episodeName,
+          initialVideoUrl: source.directUrl,
+          provider: source.sourceDisplayName,
+          streamHeaders: source.streamHeaders,
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _playResolvedTorrentSource(StreamSource source) async {
     final String preferred = _preferredProviderFor(source);
     if (preferred == 'realdebrid') {
       final bool played = await _playViaRealDebrid(source);
       if (played) {
-        return;
+        return true;
       }
     }
 
@@ -285,22 +281,14 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
       if (source.isRealDebridCached) {
         final bool played = await _playViaRealDebrid(source);
         if (played) {
-          return;
+          return true;
         }
       }
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not prepare this source in TorBox.'),
-        ),
-      );
-      return;
+      return false;
     }
 
     if (!mounted) {
-      return;
+      return true;
     }
 
     Navigator.of(context).push<void>(
@@ -323,6 +311,7 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
         ),
       ),
     );
+    return true;
   }
 
   String _preferredProviderFor(StreamSource source) {
@@ -442,38 +431,15 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
     return value.split(RegExp(r'[/\\]')).last.trim().toLowerCase();
   }
 
-  void _openTorboxers() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => TorboxersScreen(
-          seedTitle: widget.title,
-          posterPath: widget.posterPath,
-          mediaType: widget.mediaType,
-          imdbId: widget.imdbId,
-          tmdbId: widget.tmdbId,
-          seasonNumber: widget.seasonNumber,
-          episodeNumber: widget.episodeNumber,
-          episodeName: widget.episodeName,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final List<StreamSource> episodeResults = _visibleEpisodeResults;
-    final List<StreamSource> seasonPackResults = _visibleSeasonPackResults;
+    final int cachedCount =
+        _results.where((StreamSource source) => source.isCached).length;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Sources'),
-        actions: <Widget>[
-          TextButton(
-            onPressed: _openTorboxers,
-            child: const Text('Torboxers'),
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: _search,
@@ -541,12 +507,25 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
                   children: <Widget>[
                     _SourceFilterChip(
                       label: 'All (${_results.length})',
-                      selected: _selectedSource == null,
+                      selected: _selectedSource == null && !_cachedOnly,
                       onTap: () {
                         setState(() {
                           _selectedSource = null;
+                          _cachedOnly = false;
                         });
                       },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: _SourceFilterChip(
+                        label: 'Cached only ($cachedCount)',
+                        selected: _cachedOnly,
+                        onTap: () {
+                          setState(() {
+                            _cachedOnly = !_cachedOnly;
+                          });
+                        },
+                      ),
                     ),
                     ..._availableSources.map(
                       (String sourceName) => Padding(
@@ -579,58 +558,134 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
               )
             else if (_results.isEmpty)
               _EmptyState(message: _message)
-            else if (_isEpisodeContext) ...<Widget>[
-              if (episodeResults.isNotEmpty) ...<Widget>[
-                const _SectionHeader(
-                  title: 'Episode Sources',
-                  subtitle:
-                      'Single-episode matches and direct playable results.',
+            else if (_visibleResults.isEmpty)
+              _EmptyState(
+                message: _cachedOnly
+                    ? 'No cached streams match the current filter.'
+                    : _message,
+              )
+            else
+              ..._visibleGroupNames.map(
+                (String sourceName) => _SourceResultGroup(
+                  sourceName: sourceName,
+                  sources: _visibleResults
+                      .where(
+                        (StreamSource source) =>
+                            source.sourceDisplayName == sourceName,
+                      )
+                      .toList(growable: false),
+                  isEpisodeContext: _isEpisodeContext,
+                  isSeasonPackSource: _isSeasonPackSource,
+                  onPlay: _playSource,
+                  onAddToTorBox: _addToTorBox,
                 ),
-                const SizedBox(height: 10),
-                ...episodeResults.map(
-                  (StreamSource source) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _StreamedSourceCard(
-                      source: source,
-                      onPlay: () => _playSource(source),
-                      onAddToTorBox: () => _addToTorBox(source),
-                    ),
-                  ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceResultGroup extends StatelessWidget {
+  const _SourceResultGroup({
+    required this.sourceName,
+    required this.sources,
+    required this.isEpisodeContext,
+    required this.isSeasonPackSource,
+    required this.onPlay,
+    required this.onAddToTorBox,
+  });
+
+  final String sourceName;
+  final List<StreamSource> sources;
+  final bool isEpisodeContext;
+  final bool Function(StreamSource source) isSeasonPackSource;
+  final ValueChanged<StreamSource> onPlay;
+  final ValueChanged<StreamSource> onAddToTorBox;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<StreamSource> episodeSources = sources
+        .where((StreamSource source) => !isSeasonPackSource(source))
+        .toList(growable: false);
+    final List<StreamSource> seasonPacks = sources
+        .where((StreamSource source) => isSeasonPackSource(source))
+        .toList(growable: false);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _SectionHeader(
+            title: sourceName,
+            subtitle:
+                '${sources.length} result${sources.length == 1 ? '' : 's'} from this addon.',
+          ),
+          const SizedBox(height: 10),
+          if (!isEpisodeContext)
+            ...sources.map(
+              (StreamSource source) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _StreamedSourceCard(
+                  source: source,
+                  onPlay: () => onPlay(source),
+                  onAddToTorBox: () => onAddToTorBox(source),
                 ),
-              ],
-              if (seasonPackResults.isNotEmpty) ...<Widget>[
-                if (episodeResults.isNotEmpty) const SizedBox(height: 6),
-                const _SectionHeader(
-                  title: 'Season Packs',
-                  subtitle:
-                      'Full-season or multi-episode torrents. Open them to pick the right episode file in the player.',
-                ),
-                const SizedBox(height: 10),
-                ...seasonPackResults.map(
-                  (StreamSource source) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _StreamedSourceCard(
-                      source: source,
-                      onPlay: () => _playSource(source),
-                      onAddToTorBox: () => _addToTorBox(source),
-                    ),
-                  ),
-                ),
-              ],
-              if (episodeResults.isEmpty && seasonPackResults.isEmpty)
-                _EmptyState(message: _message),
-            ] else
-              ..._visibleResults.map(
+              ),
+            )
+          else ...<Widget>[
+            if (episodeSources.isNotEmpty) ...<Widget>[
+              const _SmallGroupLabel('Episode Sources'),
+              ...episodeSources.map(
                 (StreamSource source) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _StreamedSourceCard(
                     source: source,
-                    onPlay: () => _playSource(source),
-                    onAddToTorBox: () => _addToTorBox(source),
+                    onPlay: () => onPlay(source),
+                    onAddToTorBox: () => onAddToTorBox(source),
                   ),
                 ),
               ),
+            ],
+            if (seasonPacks.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 4),
+              const _SmallGroupLabel('Season Packs'),
+              ...seasonPacks.map(
+                (StreamSource source) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _StreamedSourceCard(
+                    source: source,
+                    onPlay: () => onPlay(source),
+                    onAddToTorBox: () => onAddToTorBox(source),
+                  ),
+                ),
+              ),
+            ],
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SmallGroupLabel extends StatelessWidget {
+  const _SmallGroupLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
         ),
       ),
     );

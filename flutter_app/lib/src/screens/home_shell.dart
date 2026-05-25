@@ -24,7 +24,23 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    AppSettingsRepository.settingsNotifier.addListener(_syncSettings);
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    AppSettingsRepository.settingsNotifier.removeListener(_syncSettings);
+    super.dispose();
+  }
+
+  void _syncSettings() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _settings = AppSettingsRepository.settingsNotifier.value;
+    });
   }
 
   Future<void> _loadSettings() async {

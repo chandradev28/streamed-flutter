@@ -9,8 +9,11 @@ import '../services/real_debrid_api_service.dart';
 import '../services/tmdb_image.dart';
 import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/layout_options.dart';
 import 'movie_detail_screen.dart';
 import 'video_player_screen.dart';
+
+enum _LibraryMode { cloud, saved }
 
 class LibraryScreen extends StatefulWidget {
   LibraryScreen({
@@ -41,6 +44,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   AppSettings _settings = const AppSettings();
   bool _loading = true;
   String? _cloudError;
+  _LibraryMode _mode = _LibraryMode.cloud;
+  bool _modeInitialized = false;
 
   @override
   void initState() {
@@ -86,6 +91,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _realDebridTorrents = realDebridTorrents;
       _cloudError = cloudError;
       _loading = false;
+      if (!_modeInitialized) {
+        _mode = settings.cloudLibraryEnabled
+            ? _LibraryMode.cloud
+            : _LibraryMode.saved;
+        _modeInitialized = true;
+      }
     });
   }
 
@@ -171,11 +182,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  int get _cloudCount => _torBoxTorrents.length + _realDebridTorrents.length;
+
+  String get _subtitle {
+    if (_mode == _LibraryMode.cloud) {
+      return 'Files from connected TorBox and Real-Debrid accounts';
+    }
+    return 'Movies and shows you liked inside Streamed';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final Color accent = LayoutOptions.accentFor(_settings);
     return SafeArea(
       child: RefreshIndicator(
-        color: AppColors.text,
+        color: accent,
         backgroundColor: AppColors.surface,
         onRefresh: _loadFavorites,
         child: CustomScrollView(
@@ -227,68 +248,52 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Favorites plus connected cloud libraries',
-                      style: TextStyle(
+                    Text(
+                      _subtitle,
+                      style: const TextStyle(
                         color: AppColors.textMuted,
                         fontSize: 14,
                       ),
                     ),
-                    const SizedBox(height: AppLayout.sectionGap),
+                    const SizedBox(height: 18),
+                    _LibraryModeSelector(
+                      mode: _mode,
+                      cloudCount: _cloudCount,
+                      savedCount: _favorites.length,
+                      accent: accent,
+                      onChanged: (_LibraryMode mode) {
+                        setState(() {
+                          _mode = mode;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 22),
                     if (_loading)
-                      const SizedBox(
+                      SizedBox(
                         height: 320,
                         child: Center(
                           child: CircularProgressIndicator(
-                            color: AppColors.text,
+                            color: accent,
                           ),
                         ),
                       )
-                    else ...<Widget>[
-                      if (_settings.cloudLibraryEnabled) ...<Widget>[
-                        _CloudLibrarySection(
-                          torBoxTorrents: _torBoxTorrents,
-                          realDebridTorrents: _realDebridTorrents,
-                          error: _cloudError,
-                          onOpenTorBox: _openTorBoxTorrent,
-                          onOpenRealDebrid: _openRealDebridTorrent,
-                        ),
-                        const SizedBox(height: AppLayout.sectionGap),
-                      ],
-                      const Text(
-                        'Favorites',
-                        style: TextStyle(
-                          color: AppColors.text,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                        ),
+                    else if (_mode == _LibraryMode.cloud)
+                      _CloudLibrarySection(
+                        torBoxTorrents: _torBoxTorrents,
+                        realDebridTorrents: _realDebridTorrents,
+                        cloudEnabled: _settings.cloudLibraryEnabled,
+                        error: _cloudError,
+                        accent: accent,
+                        onOpenTorBox: _openTorBoxTorrent,
+                        onOpenRealDebrid: _openRealDebridTorrent,
+                      )
+                    else
+                      _SavedLibrarySection(
+                        favorites: _favorites,
+                        accent: accent,
+                        onOpen: _openDetail,
+                        onRemove: _removeFavorite,
                       ),
-                      const SizedBox(height: 14),
-                      if (_favorites.isEmpty)
-                        const _EmptyFavoritesState()
-                      else
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _favorites.length,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: AppLayout.libraryGridGap,
-                            crossAxisSpacing: AppLayout.libraryGridGap,
-                            childAspectRatio:
-                                AppLayout.libraryCardAspectRatio * 0.76,
-                          ),
-                          itemBuilder: (BuildContext context, int index) {
-                            final FavoriteItem item = _favorites[index];
-                            return _FavoriteCard(
-                              item: item,
-                              onOpen: () => _openDetail(item),
-                              onRemove: () => _removeFavorite(item),
-                            );
-                          },
-                        ),
-                    ],
                     const SizedBox(height: 120),
                   ],
                 ),
@@ -301,14 +306,187 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 }
 
+class _LibraryModeSelector extends StatelessWidget {
+  const _LibraryModeSelector({
+    required this.mode,
+    required this.cloudCount,
+    required this.savedCount,
+    required this.accent,
+    required this.onChanged,
+  });
+
+  final _LibraryMode mode;
+  final int cloudCount;
+  final int savedCount;
+  final Color accent;
+  final ValueChanged<_LibraryMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: _LibraryModeChip(
+              label: 'Cloud',
+              count: cloudCount,
+              selected: mode == _LibraryMode.cloud,
+              accent: accent,
+              onTap: () => onChanged(_LibraryMode.cloud),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: _LibraryModeChip(
+              label: 'Saved',
+              count: savedCount,
+              selected: mode == _LibraryMode.saved,
+              accent: accent,
+              onTap: () => onChanged(_LibraryMode.saved),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LibraryModeChip extends StatelessWidget {
+  const _LibraryModeChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? accent : Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? AppColors.background : AppColors.textMuted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? AppColors.background.withOpacity(0.16)
+                      : Colors.white.withOpacity(0.07),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  count.toString(),
+                  style: TextStyle(
+                    color:
+                        selected ? AppColors.background : AppColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SavedLibrarySection extends StatelessWidget {
+  const _SavedLibrarySection({
+    required this.favorites,
+    required this.accent,
+    required this.onOpen,
+    required this.onRemove,
+  });
+
+  final List<FavoriteItem> favorites;
+  final Color accent;
+  final ValueChanged<FavoriteItem> onOpen;
+  final ValueChanged<FavoriteItem> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    if (favorites.isEmpty) {
+      return _EmptyFavoritesState(accent: accent);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const Text(
+          'Saved titles',
+          style: TextStyle(
+            color: AppColors.text,
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 14),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: favorites.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: AppLayout.libraryGridGap,
+            crossAxisSpacing: AppLayout.libraryGridGap,
+            childAspectRatio: AppLayout.libraryCardAspectRatio * 0.76,
+          ),
+          itemBuilder: (BuildContext context, int index) {
+            final FavoriteItem item = favorites[index];
+            return _FavoriteCard(
+              item: item,
+              accent: accent,
+              onOpen: () => onOpen(item),
+              onRemove: () => onRemove(item),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
 class _FavoriteCard extends StatelessWidget {
   const _FavoriteCard({
     required this.item,
+    required this.accent,
     required this.onOpen,
     required this.onRemove,
   });
 
   final FavoriteItem item;
+  final Color accent;
   final VoidCallback onOpen;
   final VoidCallback onRemove;
 
@@ -349,14 +527,14 @@ class _FavoriteCard extends StatelessWidget {
                   onPressed: onRemove,
                 ),
               ),
-              const Positioned(
+              Positioned(
                 top: 8,
                 right: 8,
                 child: _StaticPill(
                   child: Icon(
                     Icons.favorite,
                     size: 14,
-                    color: AppColors.accent,
+                    color: accent,
                   ),
                 ),
               ),
@@ -376,8 +554,7 @@ class _FavoriteCard extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          '${item.mediaType == 'movie' ? 'Movie' : 'TV Show'} • ${item.year ?? ''}'
-              .trim(),
+          _favoriteSubtitle(item),
           style: const TextStyle(
             color: AppColors.textMuted,
             fontSize: 12,
@@ -392,6 +569,8 @@ class _CloudLibrarySection extends StatelessWidget {
   const _CloudLibrarySection({
     required this.torBoxTorrents,
     required this.realDebridTorrents,
+    required this.cloudEnabled,
+    required this.accent,
     required this.onOpenTorBox,
     required this.onOpenRealDebrid,
     this.error,
@@ -399,6 +578,8 @@ class _CloudLibrarySection extends StatelessWidget {
 
   final List<TorBoxTorrent> torBoxTorrents;
   final List<RealDebridTorrentInfo> realDebridTorrents;
+  final bool cloudEnabled;
+  final Color accent;
   final ValueChanged<TorBoxTorrent> onOpenTorBox;
   final Future<void> Function(RealDebridTorrentInfo) onOpenRealDebrid;
   final String? error;
@@ -435,11 +616,24 @@ class _CloudLibrarySection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         if ((error ?? '').isNotEmpty)
-          _CloudEmptyCard(message: error!)
+          _CloudEmptyCard(
+            message: error!,
+            icon: Icons.cloud_off_rounded,
+            accent: accent,
+          )
+        else if (!cloudEnabled)
+          _CloudEmptyCard(
+            message:
+                'Cloud library is off. Enable it in Settings > Integrations > Connected Services to show TorBox and Real-Debrid files here.',
+            icon: Icons.toggle_off_rounded,
+            accent: accent,
+          )
         else if (count == 0)
-          const _CloudEmptyCard(
+          _CloudEmptyCard(
             message:
                 'No cloud items found yet. Connect TorBox or Real-Debrid in Settings > Integrations > Connected Services.',
+            icon: Icons.cloud_queue_rounded,
+            accent: accent,
           )
         else ...<Widget>[
           ...torBoxTorrents.map(
@@ -448,6 +642,7 @@ class _CloudLibrarySection extends StatelessWidget {
               subtitle:
                   'TorBox - ${_formatBytesStatic(torrent.size)} - ${torrent.progress.round()}%',
               icon: Icons.dns_rounded,
+              accent: accent,
               onTap: () async => onOpenTorBox(torrent),
             ),
           ),
@@ -457,6 +652,7 @@ class _CloudLibrarySection extends StatelessWidget {
               subtitle:
                   'Real-Debrid - ${_formatBytesStatic(torrent.bytes)} - ${torrent.status}',
               icon: Icons.bolt_rounded,
+              accent: accent,
               onTap: () => onOpenRealDebrid(torrent),
             ),
           ),
@@ -471,12 +667,14 @@ class _CloudLibraryTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.icon,
+    required this.accent,
     required this.onTap,
   });
 
   final String title;
   final String subtitle;
   final IconData icon;
+  final Color accent;
   final Future<void> Function() onTap;
 
   @override
@@ -497,10 +695,10 @@ class _CloudLibraryTile extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
+                    color: accent.withOpacity(0.16),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(icon, color: AppColors.text),
+                  child: Icon(icon, color: accent),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -529,7 +727,7 @@ class _CloudLibraryTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.play_arrow_rounded, color: AppColors.text),
+                Icon(Icons.play_arrow_rounded, color: accent),
               ],
             ),
           ),
@@ -540,22 +738,43 @@ class _CloudLibraryTile extends StatelessWidget {
 }
 
 class _CloudEmptyCard extends StatelessWidget {
-  const _CloudEmptyCard({required this.message});
+  const _CloudEmptyCard({
+    required this.message,
+    required this.icon,
+    required this.accent,
+  });
 
   final String message;
+  final IconData icon;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        message,
-        style: const TextStyle(color: AppColors.textMuted, height: 1.4),
+      child: Column(
+        children: <Widget>[
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: accent.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Icon(icon, color: accent),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.textMuted, height: 1.4),
+          ),
+        ],
       ),
     );
   }
@@ -628,36 +847,59 @@ class _PosterFallback extends StatelessWidget {
 }
 
 class _EmptyFavoritesState extends StatelessWidget {
-  const _EmptyFavoritesState();
+  const _EmptyFavoritesState({required this.accent});
+
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 80),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 18),
       child: Column(
         children: <Widget>[
-          Icon(
-            Icons.favorite_border,
-            size: 64,
-            color: AppColors.cardBackground,
-          ),
-          SizedBox(height: 20),
-          Text(
-            'No favorites yet',
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
             ),
-          ),
-          SizedBox(height: 10),
-          Text(
-            'Tap the heart icon on any movie or TV show to add it to your favorites.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 14,
-              height: 1.4,
+            child: Column(
+              children: <Widget>[
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Icon(
+                    Icons.favorite_border_rounded,
+                    size: 30,
+                    color: accent,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Your saved library is empty',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Liked movies and shows will appear here. Cloud files stay in the Cloud tab.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 14,
+                    height: 1.4,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -680,4 +922,13 @@ String _formatBytesStatic(int bytes) {
   }
 
   return '${value.toStringAsFixed(value >= 10 || index == 0 ? 0 : 1)} ${sizes[index]}';
+}
+
+String _favoriteSubtitle(FavoriteItem item) {
+  final String type = item.mediaType == 'movie' ? 'Movie' : 'TV Show';
+  final String? year = item.year?.trim();
+  if (year == null || year.isEmpty) {
+    return type;
+  }
+  return '$type - $year';
 }
