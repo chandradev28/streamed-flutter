@@ -12,13 +12,46 @@ class TraktApiService {
 
   static const String _baseUrl = 'https://api.trakt.tv';
   static const int _apiVersion = 2;
+  static const String _bundledClientId =
+      String.fromEnvironment('TRAKT_CLIENT_ID', defaultValue: '');
+  static const String _bundledClientSecret =
+      String.fromEnvironment('TRAKT_CLIENT_SECRET', defaultValue: '');
 
   final AppSettingsRepository settingsRepository;
+
+  bool get hasBundledCredentials =>
+      _bundledClientId.trim().isNotEmpty &&
+      _bundledClientSecret.trim().isNotEmpty;
+
+  Future<bool> hasUsableCredentials() async {
+    final AppSettings settings = await settingsRepository.loadSettings();
+    return _effectiveClientId(settings).isNotEmpty &&
+        _effectiveClientSecret(settings).isNotEmpty;
+  }
+
+  Future<void> ensureBundledCredentialsSaved() async {
+    if (!hasBundledCredentials) {
+      return;
+    }
+    final AppSettings settings = await settingsRepository.loadSettings();
+    final String currentId = (settings.traktClientId ?? '').trim();
+    final String currentSecret = (settings.traktClientSecret ?? '').trim();
+    if (currentId.isNotEmpty && currentSecret.isNotEmpty) {
+      return;
+    }
+    await settingsRepository.saveSettings(
+      settings.copyWith(
+        traktClientId: currentId.isEmpty ? _bundledClientId.trim() : currentId,
+        traktClientSecret:
+            currentSecret.isEmpty ? _bundledClientSecret.trim() : currentSecret,
+      ),
+    );
+  }
 
   Future<bool> isConnected() async {
     final AppSettings settings = await settingsRepository.loadSettings();
     return (settings.traktAccessToken ?? '').trim().isNotEmpty &&
-        (settings.traktClientId ?? '').trim().isNotEmpty;
+        _effectiveClientId(settings).isNotEmpty;
   }
 
   Future<void> saveCredentials({
@@ -36,10 +69,11 @@ class TraktApiService {
 
   Future<TraktDeviceCode> createDeviceCode() async {
     final AppSettings settings = await settingsRepository.loadSettings();
-    final String clientId = (settings.traktClientId ?? '').trim();
+    final String clientId = _effectiveClientId(settings);
     if (clientId.isEmpty) {
       throw const TraktApiException(
-        detail: 'Enter a Trakt client ID first.',
+        detail:
+            'This build does not have Trakt app credentials yet. Add your own in Advanced setup.',
       );
     }
 
@@ -54,11 +88,12 @@ class TraktApiService {
 
   Future<TraktUser> exchangeDeviceCode(String deviceCode) async {
     final AppSettings settings = await settingsRepository.loadSettings();
-    final String clientId = (settings.traktClientId ?? '').trim();
-    final String clientSecret = (settings.traktClientSecret ?? '').trim();
+    final String clientId = _effectiveClientId(settings);
+    final String clientSecret = _effectiveClientSecret(settings);
     if (clientId.isEmpty || clientSecret.isEmpty) {
       throw const TraktApiException(
-        detail: 'Enter Trakt client ID and client secret first.',
+        detail:
+            'This build does not have complete Trakt app credentials yet. Add them in Advanced setup.',
       );
     }
 
@@ -165,8 +200,8 @@ class TraktApiService {
   Future<AppSettings> _ensureFreshToken(AppSettings settings) async {
     final int? expiresAt = settings.traktTokenExpiresAt;
     final String refreshToken = (settings.traktRefreshToken ?? '').trim();
-    final String clientId = (settings.traktClientId ?? '').trim();
-    final String clientSecret = (settings.traktClientSecret ?? '').trim();
+    final String clientId = _effectiveClientId(settings);
+    final String clientSecret = _effectiveClientSecret(settings);
     final bool stillValid = expiresAt != null &&
         expiresAt >
             DateTime.now()
@@ -250,7 +285,7 @@ class TraktApiService {
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
       request.headers.set('trakt-api-version', _apiVersion.toString());
-      final String clientId = (settings.traktClientId ?? '').trim();
+      final String clientId = _effectiveClientId(settings);
       if (clientId.isNotEmpty) {
         request.headers.set('trakt-api-key', clientId);
       }
@@ -290,6 +325,16 @@ class TraktApiService {
     } finally {
       client.close(force: true);
     }
+  }
+
+  String _effectiveClientId(AppSettings settings) {
+    final String saved = (settings.traktClientId ?? '').trim();
+    return saved.isNotEmpty ? saved : _bundledClientId.trim();
+  }
+
+  String _effectiveClientSecret(AppSettings settings) {
+    final String saved = (settings.traktClientSecret ?? '').trim();
+    return saved.isNotEmpty ? saved : _bundledClientSecret.trim();
   }
 }
 

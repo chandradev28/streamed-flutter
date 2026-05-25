@@ -34,10 +34,17 @@ class _TraktScreenState extends State<TraktScreen> {
   Timer? _pollTimer;
   bool _loading = true;
   bool _busy = false;
+  bool _showAdvanced = false;
   String? _status;
 
   Color get _accent => LayoutOptions.accentFor(_settings);
   bool get _connected => (_settings.traktAccessToken ?? '').trim().isNotEmpty;
+  bool get _hasManualCredentials =>
+      (_settings.traktClientId ?? '').trim().isNotEmpty &&
+      (_settings.traktClientSecret ?? '').trim().isNotEmpty;
+  bool get _hasUsableCredentials =>
+      _hasManualCredentials || widget.traktApiService.hasBundledCredentials;
+  bool get _showAdvancedSetup => _showAdvanced || !_hasUsableCredentials;
 
   @override
   void initState() {
@@ -54,6 +61,7 @@ class _TraktScreenState extends State<TraktScreen> {
   }
 
   Future<void> _load() async {
+    await widget.traktApiService.ensureBundledCredentialsSaved();
     final AppSettings settings = await widget.settingsRepository.loadSettings();
     if (!mounted) {
       return;
@@ -67,21 +75,30 @@ class _TraktScreenState extends State<TraktScreen> {
   }
 
   Future<void> _saveCredentials() async {
+    final String clientId = _clientIdController.text.trim();
+    final String clientSecret = _clientSecretController.text.trim();
+    if (clientId.isEmpty || clientSecret.isEmpty) {
+      setState(() {
+        _status = 'Enter both Trakt client ID and client secret.';
+      });
+      return;
+    }
     setState(() {
       _busy = true;
       _status = null;
     });
     try {
       await widget.traktApiService.saveCredentials(
-        clientId: _clientIdController.text,
-        clientSecret: _clientSecretController.text,
+        clientId: clientId,
+        clientSecret: clientSecret,
       );
       await _load();
       if (!mounted) {
         return;
       }
       setState(() {
-        _status = 'Trakt app credentials saved.';
+        _showAdvanced = false;
+        _status = 'Trakt app credentials saved. You can sign in now.';
         _busy = false;
       });
     } catch (error) {
@@ -95,16 +112,39 @@ class _TraktScreenState extends State<TraktScreen> {
     }
   }
 
-  Future<void> _startLogin() async {
-    await _saveCredentials();
-    if (!mounted) {
-      return;
+  Future<void> _prepareCredentialsForLogin() async {
+    final String manualId = _clientIdController.text.trim();
+    final String manualSecret = _clientSecretController.text.trim();
+    if (manualId.isNotEmpty || manualSecret.isNotEmpty) {
+      if (manualId.isEmpty || manualSecret.isEmpty) {
+        throw const TraktApiException(
+          detail: 'Enter both Trakt client ID and client secret.',
+        );
+      }
+      await widget.traktApiService.saveCredentials(
+        clientId: manualId,
+        clientSecret: manualSecret,
+      );
+      await _load();
     }
+
+    final bool hasCredentials =
+        await widget.traktApiService.hasUsableCredentials();
+    if (!hasCredentials) {
+      throw const TraktApiException(
+        detail:
+            'This build does not include Trakt app credentials yet. Open Advanced setup and add your own Trakt app credentials.',
+      );
+    }
+  }
+
+  Future<void> _startLogin() async {
     setState(() {
       _busy = true;
       _status = 'Requesting Trakt login code...';
     });
     try {
+      await _prepareCredentialsForLogin();
       final TraktDeviceCode code =
           await widget.traktApiService.createDeviceCode();
       if (!mounted) {
@@ -113,7 +153,7 @@ class _TraktScreenState extends State<TraktScreen> {
       setState(() {
         _deviceCode = code;
         _busy = false;
-        _status = 'Complete Trakt sign in in your browser.';
+        _status = 'Finish Trakt sign in in your browser.';
       });
       unawaited(_openLogin());
       _startPolling(code);
@@ -214,6 +254,15 @@ class _TraktScreenState extends State<TraktScreen> {
     });
   }
 
+  void _cancelLogin() {
+    _pollTimer?.cancel();
+    setState(() {
+      _busy = false;
+      _deviceCode = null;
+      _status = 'Trakt login cancelled.';
+    });
+  }
+
   Future<void> _saveToggle(AppSettings settings) async {
     setState(() {
       _settings = settings;
@@ -238,50 +287,82 @@ class _TraktScreenState extends State<TraktScreen> {
                   const _SectionLabel('AUTHENTICATION'),
                   _SettingsCard(
                     children: <Widget>[
-                      if (!_connected) ...<Widget>[
-                        const Text(
-                          'Create a Trakt API app, then paste its client ID and client secret here. Device login will open in your browser.',
-                          style: TextStyle(
-                            color: AppColors.textMuted,
-                            height: 1.4,
+                      if (_connected) ...<Widget>[
+                        _ConnectedPanel(
+                          username: _settings.traktUsername ?? 'Trakt user',
+                          lastSyncAt: _settings.traktLastSyncAt,
+                          accent: _accent,
+                          onDisconnect: _disconnect,
+                        ),
+                      ] else ...<Widget>[
+                        Text(
+                          _deviceCode == null
+                              ? 'Finish Trakt sign in in your browser'
+                              : 'Complete Trakt sign in in your browser',
+                          style: const TextStyle(
+                            color: AppColors.text,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
-                        const SizedBox(height: 14),
-                        _CredentialField(
-                          label: 'Client ID',
-                          controller: _clientIdController,
+                        const SizedBox(height: 8),
+                        Text(
+                          _hasUsableCredentials
+                              ? 'After approval, you will be redirected back automatically.'
+                              : 'This build needs Trakt app credentials first. You can still add your own below.',
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            height: 1.35,
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                        _CredentialField(
-                          label: 'Client Secret',
-                          controller: _clientSecretController,
-                          obscureText: true,
-                        ),
-                        const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: <Widget>[
-                            FilledButton(
-                              onPressed: _busy ? null : _startLogin,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: _accent,
-                                foregroundColor: AppColors.background,
-                              ),
-                              child: Text(
-                                _deviceCode == null
-                                    ? 'Open Trakt Login'
-                                    : 'Open Browser',
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: _busy ? null : _startLogin,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: _accent,
+                              foregroundColor: AppColors.background,
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
                               ),
                             ),
-                            FilledButton.tonal(
-                              onPressed: _busy ? null : _saveCredentials,
-                              child: const Text('Save credentials'),
+                            child: const Text('Open Trakt Login'),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: _deviceCode != null
+                                ? _cancelLogin
+                                : () {
+                                    setState(() {
+                                      _showAdvanced = !_showAdvanced;
+                                    });
+                                  },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.text,
+                              side: BorderSide(
+                                color: Colors.white.withOpacity(0.10),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                              ),
                             ),
-                          ],
+                            child: Text(
+                              _deviceCode != null
+                                  ? 'Cancel'
+                                  : (_showAdvancedSetup
+                                      ? 'Hide Advanced Setup'
+                                      : 'Use Your Own Trakt App'),
+                            ),
+                          ),
                         ),
                         if (_deviceCode != null) ...<Widget>[
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 16),
                           _CodePanel(
                             code: _deviceCode!,
                             accent: _accent,
@@ -289,13 +370,17 @@ class _TraktScreenState extends State<TraktScreen> {
                             onOpen: _openLogin,
                           ),
                         ],
-                      ] else ...<Widget>[
-                        _ConnectedPanel(
-                          username: _settings.traktUsername ?? 'Trakt user',
-                          lastSyncAt: _settings.traktLastSyncAt,
-                          accent: _accent,
-                          onDisconnect: _disconnect,
-                        ),
+                        if (_showAdvancedSetup) ...<Widget>[
+                          const SizedBox(height: 16),
+                          _AdvancedSetupCard(
+                            clientIdController: _clientIdController,
+                            clientSecretController: _clientSecretController,
+                            onSave: _busy ? null : _saveCredentials,
+                            usingBundledCredentials:
+                                widget.traktApiService.hasBundledCredentials &&
+                                    !_hasManualCredentials,
+                          ),
+                        ],
                       ],
                       if ((_status ?? '').isNotEmpty) ...<Widget>[
                         const SizedBox(height: 14),
@@ -309,62 +394,65 @@ class _TraktScreenState extends State<TraktScreen> {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 22),
-                  const _SectionLabel('SYNC'),
-                  _SettingsCard(
-                    children: <Widget>[
-                      _ToggleRow(
-                        title: 'Scrobble playback',
-                        subtitle:
-                            'Send start, pause, and watched progress from the player.',
-                        value: _settings.traktScrobbleEnabled,
-                        accent: _accent,
-                        onChanged: (bool value) => _saveToggle(
-                          _settings.copyWith(traktScrobbleEnabled: value),
+                  if (_connected) ...<Widget>[
+                    const SizedBox(height: 22),
+                    const _SectionLabel('SYNC'),
+                    _SettingsCard(
+                      children: <Widget>[
+                        _ToggleRow(
+                          title: 'Scrobble playback',
+                          subtitle:
+                              'Send start, pause, and watched progress from the player.',
+                          value: _settings.traktScrobbleEnabled,
+                          accent: _accent,
+                          onChanged: (bool value) => _saveToggle(
+                            _settings.copyWith(traktScrobbleEnabled: value),
+                          ),
                         ),
-                      ),
-                      _ToggleRow(
-                        title: 'Sync progress',
-                        subtitle:
-                            'Use Trakt playback progress with Continue Watching.',
-                        value: _settings.traktSyncProgressEnabled,
-                        accent: _accent,
-                        onChanged: (bool value) => _saveToggle(
-                          _settings.copyWith(traktSyncProgressEnabled: value),
+                        _ToggleRow(
+                          title: 'Sync progress',
+                          subtitle:
+                              'Use Trakt playback progress with Continue Watching.',
+                          value: _settings.traktSyncProgressEnabled,
+                          accent: _accent,
+                          onChanged: (bool value) => _saveToggle(
+                            _settings.copyWith(traktSyncProgressEnabled: value),
+                          ),
                         ),
-                      ),
-                      _ToggleRow(
-                        title: 'Sync watchlist',
-                        subtitle:
-                            'Show Trakt watchlist shelves on Home when connected.',
-                        value: _settings.traktSyncWatchlistEnabled,
-                        accent: _accent,
-                        onChanged: (bool value) => _saveToggle(
-                          _settings.copyWith(traktSyncWatchlistEnabled: value),
+                        _ToggleRow(
+                          title: 'Sync watchlist',
+                          subtitle:
+                              'Show Trakt watchlist shelves on Home when connected.',
+                          value: _settings.traktSyncWatchlistEnabled,
+                          accent: _accent,
+                          onChanged: (bool value) => _saveToggle(
+                            _settings.copyWith(
+                                traktSyncWatchlistEnabled: value),
+                          ),
                         ),
-                      ),
-                      _ToggleRow(
-                        title: 'Sync watched history',
-                        subtitle:
-                            'Mark completed movies and episodes as watched on Trakt.',
-                        value: _settings.traktSyncHistoryEnabled,
-                        accent: _accent,
-                        onChanged: (bool value) => _saveToggle(
-                          _settings.copyWith(traktSyncHistoryEnabled: value),
+                        _ToggleRow(
+                          title: 'Sync watched history',
+                          subtitle:
+                              'Mark completed movies and episodes as watched on Trakt.',
+                          value: _settings.traktSyncHistoryEnabled,
+                          accent: _accent,
+                          onChanged: (bool value) => _saveToggle(
+                            _settings.copyWith(traktSyncHistoryEnabled: value),
+                          ),
                         ),
-                      ),
-                      _ToggleRow(
-                        title: 'Personal lists',
-                        subtitle:
-                            'Prepare custom Trakt lists for future Library shelves.',
-                        value: _settings.traktSyncListsEnabled,
-                        accent: _accent,
-                        onChanged: (bool value) => _saveToggle(
-                          _settings.copyWith(traktSyncListsEnabled: value),
+                        _ToggleRow(
+                          title: 'Personal lists',
+                          subtitle:
+                              'Prepare custom Trakt lists for future Library shelves.',
+                          value: _settings.traktSyncListsEnabled,
+                          accent: _accent,
+                          onChanged: (bool value) => _saveToggle(
+                            _settings.copyWith(traktSyncListsEnabled: value),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
       ),
@@ -578,6 +666,79 @@ class _ConnectedPanel extends StatelessWidget {
           child: const Text('Disconnect'),
         ),
       ],
+    );
+  }
+}
+
+class _AdvancedSetupCard extends StatelessWidget {
+  const _AdvancedSetupCard({
+    required this.clientIdController,
+    required this.clientSecretController,
+    required this.onSave,
+    required this.usingBundledCredentials,
+  });
+
+  final TextEditingController clientIdController;
+  final TextEditingController clientSecretController;
+  final Future<void> Function()? onSave;
+  final bool usingBundledCredentials;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'Advanced setup',
+            style: TextStyle(
+              color: AppColors.text,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            usingBundledCredentials
+                ? 'This build already has Trakt app credentials. Add your own only if you want to override them.'
+                : 'Add your own Trakt API app credentials for this build.',
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 12.5,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _CredentialField(
+            label: 'Client ID',
+            controller: clientIdController,
+          ),
+          const SizedBox(height: 10),
+          _CredentialField(
+            label: 'Client Secret',
+            controller: clientSecretController,
+            obscureText: true,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonal(
+              onPressed: onSave == null
+                  ? null
+                  : () {
+                      unawaited(onSave!.call());
+                    },
+              child: const Text('Save credentials'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

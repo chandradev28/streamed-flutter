@@ -199,10 +199,10 @@ class _ContinueWatchingLayoutScreenState
         child: _loading
             ? Center(child: CircularProgressIndicator(color: _accent))
             : ListView(
-                padding: const EdgeInsets.fromLTRB(22, 28, 22, 130),
+                padding: const EdgeInsets.fromLTRB(22, 24, 22, 110),
                 children: <Widget>[
                   const _LayoutTitle(title: 'Continue\nWatching'),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   const _SectionLabel('VISIBILITY'),
                   _SettingsCard(
                     children: <Widget>[
@@ -218,7 +218,7 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
                   const _SectionLabel('POSTER CARD STYLE'),
                   Row(
                     children: <Widget>[
@@ -249,7 +249,7 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   const _SectionLabel('UP NEXT BEHAVIOR'),
                   _SettingsCard(
                     children: <Widget>[
@@ -302,7 +302,7 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   const _SectionLabel('ON LAUNCH'),
                   _SettingsCard(
                     children: <Widget>[
@@ -320,7 +320,7 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   const _SectionLabel('SORT ORDER'),
                   _SettingsCard(
                     children: <Widget>[
@@ -406,10 +406,10 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
         child: _loading
             ? Center(child: CircularProgressIndicator(color: _accent))
             : ListView(
-                padding: const EdgeInsets.fromLTRB(22, 28, 22, 130),
+                padding: const EdgeInsets.fromLTRB(22, 24, 22, 110),
                 children: <Widget>[
                   const _LayoutTitle(title: 'Poster Card\nStyle'),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerRight,
                     child: _SoftActionButton(
@@ -418,7 +418,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                       onTap: _reset,
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 18),
                   const _SectionLabel('POSTER CARD STYLE'),
                   _SettingsCard(
                     children: <Widget>[
@@ -429,7 +429,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 14),
                       const Text(
                         'Live Preview',
                         style: TextStyle(
@@ -437,7 +437,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       Center(
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 180),
@@ -467,7 +467,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
                       _PreviewMetrics(
                         accent: _accent,
                         values: <String, String>{
@@ -476,9 +476,9 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           'Height': '${height.round()}dp',
                         },
                       ),
-                      const SizedBox(height: 26),
+                      const SizedBox(height: 20),
                       Divider(color: Colors.white.withOpacity(0.08)),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
                       Text(
                         'Width (${LayoutOptions.posterWidthLabel(_settings.posterWidthPreset)})',
                         style: const TextStyle(
@@ -487,7 +487,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           fontSize: 16,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       _ChoiceWrap(
                         values: const <String>[
                           'compact',
@@ -504,7 +504,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           _settings.copyWith(posterWidthPreset: value),
                         ),
                       ),
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 18),
                       Text(
                         'Corner Radius (${LayoutOptions.posterRadiusLabel(_settings.posterRadiusPreset)})',
                         style: const TextStyle(
@@ -513,7 +513,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           fontSize: 16,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       _ChoiceWrap(
                         values: const <String>[
                           'sharp',
@@ -529,7 +529,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           _settings.copyWith(posterRadiusPreset: value),
                         ),
                       ),
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 18),
                       _ToggleRow(
                         title: 'Landscape Posters',
                         value: _settings.posterLandscapeEnabled,
@@ -748,10 +748,10 @@ class _SettingsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
@@ -782,32 +782,37 @@ class _NavigationRow extends StatelessWidget {
     return ListTile(
       onTap: onTap,
       contentPadding: EdgeInsets.zero,
+      minVerticalPadding: 0,
       leading: icon == null
           ? null
           : Container(
-              width: 44,
-              height: 44,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 color: accent.withOpacity(0.16),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: accent),
+              child: Icon(icon, color: accent, size: 21),
             ),
       title: Text(
         title,
         style: const TextStyle(
           color: AppColors.text,
           fontWeight: FontWeight.w800,
-          fontSize: 16,
+          fontSize: 17,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(color: AppColors.textMuted, height: 1.25),
+        style: const TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 13,
+          height: 1.2,
+        ),
       ),
       trailing: Icon(
         Icons.chevron_right_rounded,
-        color: accent.withOpacity(0.78),
+        color: accent.withOpacity(0.82),
       ),
     );
   }
@@ -831,9 +836,9 @@ class _ToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Expanded(
             child: Column(
@@ -843,30 +848,36 @@ class _ToggleRow extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     color: AppColors.text,
-                    fontSize: 14,
-                    height: 1.2,
+                    fontSize: 16,
+                    height: 1.15,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 if (subtitle != null) ...<Widget>[
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle!,
                     style: const TextStyle(
                       color: AppColors.textMuted,
-                      fontSize: 12,
-                      height: 1.25,
+                      fontSize: 13,
+                      height: 1.22,
                     ),
                   ),
                 ],
               ],
             ),
           ),
-          const SizedBox(width: 18),
-          Switch(
-            value: value,
-            activeColor: accent,
-            onChanged: onChanged,
+          const SizedBox(width: 12),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Transform.scale(
+              scale: 0.92,
+              child: Switch(
+                value: value,
+                activeColor: accent,
+                onChanged: onChanged,
+              ),
+            ),
           ),
         ],
       ),
@@ -897,11 +908,11 @@ class _ContinueStyleCard extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        height: 150,
-        padding: const EdgeInsets.all(16),
+        height: 136,
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         decoration: BoxDecoration(
           color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: selected ? accent.withOpacity(0.85) : AppColors.border,
             width: selected ? 1.5 : 1,
@@ -915,26 +926,28 @@ class _ContinueStyleCard extends StatelessWidget {
               child: Icon(
                 selected ? Icons.check_circle_rounded : Icons.circle_outlined,
                 color: selected ? accent : AppColors.textMuted,
-                size: 20,
+                size: 18,
               ),
             ),
-            const SizedBox(height: 14),
-            Icon(icon, color: AppColors.textMuted, size: 34),
+            const SizedBox(height: 6),
+            Icon(icon, color: AppColors.textMuted, size: 28),
             const Spacer(),
             Text(
               title,
               style: const TextStyle(
                 color: AppColors.text,
-                fontSize: 14,
+                fontSize: 15,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 2),
             Text(
               subtitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: AppColors.textMuted,
-                fontSize: 10,
+                fontSize: 11.5,
                 height: 1.18,
               ),
             ),
@@ -996,15 +1009,15 @@ class _ChoicePill extends StatelessWidget {
     return Material(
       color:
           selected ? accent.withOpacity(0.26) : Colors.white.withOpacity(0.03),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(11),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(11),
         child: Container(
-          constraints: const BoxConstraints(minWidth: 84),
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          constraints: const BoxConstraints(minWidth: 78),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(11),
             border: Border.all(
               color: selected ? accent.withOpacity(0.65) : AppColors.border,
             ),
@@ -1025,7 +1038,7 @@ class _ChoicePill extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: selected ? AppColors.text : AppColors.textMuted,
-                  fontSize: 12,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -1105,10 +1118,10 @@ class _SortOrderSheet extends StatelessWidget {
       top: false,
       child: Container(
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        padding: const EdgeInsets.fromLTRB(22, 12, 22, 22),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
         decoration: BoxDecoration(
           color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white.withOpacity(0.06)),
           boxShadow: const <BoxShadow>[
             BoxShadow(
@@ -1137,12 +1150,12 @@ class _SortOrderSheet extends StatelessWidget {
               'Sort Order',
               style: TextStyle(
                 color: AppColors.text,
-                fontSize: 26,
+                fontSize: 24,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -0.5,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             _SortOption(
               value: 'default',
               selected: selected,
@@ -1189,14 +1202,14 @@ class _SortOption extends StatelessWidget {
     final bool isSelected = value == selected;
     return Material(
       color: isSelected ? Colors.white.withOpacity(0.09) : Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: () => onSelected(value),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isSelected ? accent.withOpacity(0.34) : Colors.transparent,
             ),
@@ -1211,17 +1224,17 @@ class _SortOption extends StatelessWidget {
                       title,
                       style: const TextStyle(
                         color: AppColors.text,
-                        fontSize: 16,
+                        fontSize: 17,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 4),
                     Text(
                       subtitle,
                       style: const TextStyle(
                         color: AppColors.textMuted,
-                        fontSize: 13,
-                        height: 1.3,
+                        fontSize: 13.5,
+                        height: 1.22,
                       ),
                     ),
                   ],

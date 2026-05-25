@@ -184,13 +184,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   int get _cloudCount => _torBoxTorrents.length + _realDebridTorrents.length;
 
-  String get _subtitle {
-    if (_mode == _LibraryMode.cloud) {
-      return 'Files from connected TorBox and Real-Debrid accounts';
-    }
-    return 'Movies and shows you liked inside Streamed';
-  }
-
   @override
   Widget build(BuildContext context) {
     final Color accent = LayoutOptions.accentFor(_settings);
@@ -246,14 +239,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _subtitle,
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 14,
-                      ),
                     ),
                     const SizedBox(height: 18),
                     _LibraryModeSelector(

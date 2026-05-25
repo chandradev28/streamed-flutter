@@ -15,6 +15,8 @@ import '../theme/layout_options.dart';
 import 'episode_screen.dart';
 import 'movie_detail_screen.dart';
 import 'profile_screen.dart';
+import 'streamed_sources_screen.dart';
+import 'video_player_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   HomeScreen({
@@ -178,31 +180,210 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openContinueWatching(WatchHistoryItem item) {
-    if (item.mediaType == 'tv' && item.seasonNumber != null) {
-      Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (BuildContext context) => EpisodeScreen(
-            tvId: item.tmdbId,
-            initialSeason: item.seasonNumber ?? 1,
-            showName: item.title,
-            posterPath: item.posterPath,
-            mediaService: widget.mediaService,
-          ),
-        ),
-      );
-      return;
-    }
-
+  void _openMediaList({
+    required String title,
+    required List<MediaSummary> items,
+  }) {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (BuildContext context) => MovieDetailScreen(
-          id: item.tmdbId,
-          mediaType: item.mediaType,
-          mediaService: widget.mediaService,
+        builder: (BuildContext context) => _MediaListScreen(
+          title: title,
+          items: items,
+          settings: _settings,
+          accent: LayoutOptions.accentFor(_settings),
+          onOpen: _openMedia,
         ),
       ),
     );
+  }
+
+  Future<void> _openContinueWatching(WatchHistoryItem item) async {
+    final bool resumePlayback = await _shouldResumePlayback(item);
+    if (!mounted) {
+      return;
+    }
+
+    if (_hasPlayableHistoryContext(item)) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (BuildContext context) => VideoPlayerScreen(
+            title: item.title,
+            posterUrl: item.posterPath ?? item.backdropPath,
+            tmdbId: item.tmdbId,
+            imdbId: item.imdbId,
+            mediaType: item.mediaType,
+            seasonNumber: item.seasonNumber,
+            episodeNumber: item.episodeNumber,
+            episodeName: item.episodeName,
+            torrentHash: item.torrentHash,
+            torrentId: item.torrentId,
+            initialVideoUrl: item.resolvedUrl,
+            initialFileId: item.activeFileId,
+            initialFileIndex: item.activeFileIndex,
+            initialFileName: item.activeFileName,
+            startPositionMs: resumePlayback ? item.currentTime : 0,
+            provider: item.provider,
+            streamHeaders: item.streamHeaders ?? const <String, String>{},
+          ),
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      await _loadHome();
+      return;
+    }
+
+    await _openContinueWatchingFallback(item);
+  }
+
+  bool _hasPlayableHistoryContext(WatchHistoryItem item) {
+    return (item.resolvedUrl ?? '').isNotEmpty || item.torrentId != null;
+  }
+
+  Future<bool> _shouldResumePlayback(WatchHistoryItem item) async {
+    if (!_settings.continueWatchingResumePrompt ||
+        item.currentTime <= 0 ||
+        item.duration <= 0) {
+      return true;
+    }
+
+    final bool? result = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return SafeArea(
+          top: false,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: Colors.white.withOpacity(0.06)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 22,
+                    height: 1.08,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Resume from ${_formatWatchTime(item.currentTime)} or start again from the beginning.',
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 14,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: LayoutOptions.accentFor(_settings),
+                      foregroundColor: AppColors.background,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child:
+                        Text('Resume at ${_formatWatchTime(item.currentTime)}'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.text,
+                      side: BorderSide(color: Colors.white.withOpacity(0.14)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Start over'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    return result ?? true;
+  }
+
+  Future<void> _openContinueWatchingFallback(WatchHistoryItem item) async {
+    try {
+      final MediaDetail detail =
+          await widget.mediaService.getMediaDetail(item.tmdbId, item.mediaType);
+      if (!mounted) {
+        return;
+      }
+
+      final String? imdbId = detail.imdbId;
+      if ((imdbId ?? '').isNotEmpty) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (BuildContext context) => StreamedSourcesScreen(
+              title: detail.title,
+              posterPath: item.posterPath ?? detail.posterPath,
+              mediaType: item.mediaType,
+              imdbId: imdbId!,
+              tmdbId: item.tmdbId,
+              seasonNumber: item.seasonNumber,
+              episodeNumber: item.episodeNumber,
+              episodeName: item.episodeName,
+            ),
+          ),
+        );
+      } else if (item.mediaType == 'tv' && item.seasonNumber != null) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (BuildContext context) => EpisodeScreen(
+              tvId: item.tmdbId,
+              initialSeason: item.seasonNumber ?? 1,
+              showName: detail.title,
+              posterPath: item.posterPath ?? detail.posterPath,
+              mediaService: widget.mediaService,
+            ),
+          ),
+        );
+      } else {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (BuildContext context) => MovieDetailScreen(
+              id: item.tmdbId,
+              mediaType: item.mediaType,
+              mediaService: widget.mediaService,
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not reopen this Continue Watching item yet.'),
+        ),
+      );
+    }
+
+    if (!mounted) {
+      return;
+    }
+    await _loadHome();
   }
 
   Future<void> _removeHistory(String id) async {
@@ -385,6 +566,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: 'Top 10 Movies This Week',
                 actionLabel: 'View All',
                 accent: accent,
+                onAction: _trending.isEmpty
+                    ? null
+                    : () => _openMediaList(
+                          title: 'Top 10 Movies This Week',
+                          items: _trending,
+                        ),
               ),
               SliverToBoxAdapter(
                 child: _loading && _trending.isEmpty
@@ -405,6 +592,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: 'Top 10 Series This Week',
                 actionLabel: 'View All',
                 accent: accent,
+                onAction: _trendingSeries.isEmpty
+                    ? null
+                    : () => _openMediaList(
+                          title: 'Top 10 Series This Week',
+                          items: _trendingSeries,
+                        ),
               ),
               SliverToBoxAdapter(
                 child: _loading && _trendingSeries.isEmpty
@@ -425,13 +618,13 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 child: _loading && _newReleases.isEmpty
                     ? const _PosterSkeletonRow(
-                        height: 235,
+                        height: 218,
                         itemWidth: 155,
                         itemHeight: 185,
                         count: 4,
                       )
                     : SizedBox(
-                        height: _settings.posterLandscapeEnabled ? 164 : 235,
+                        height: _settings.posterLandscapeEnabled ? 148 : 218,
                         child: ListView.separated(
                           padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
                           scrollDirection: Axis.horizontal,
@@ -449,7 +642,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 132)),
+              const SliverToBoxAdapter(child: SizedBox(height: 92)),
             ],
           ),
         ),
@@ -877,12 +1070,12 @@ class _TopTenRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final double cardWidth = LayoutOptions.posterWidth(settings) + 18;
     final double cardHeight = settings.posterLandscapeEnabled
-        ? (LayoutOptions.posterWidth(settings) * 0.66) + 54
-        : (LayoutOptions.posterWidth(settings) * 1.48) + 54;
+        ? (LayoutOptions.posterWidth(settings) * 0.66) + 38
+        : (LayoutOptions.posterWidth(settings) * 1.48) + 38;
     return SizedBox(
       height: cardHeight,
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(24, 0, 16, 16),
+        padding: const EdgeInsets.fromLTRB(24, 0, 16, 8),
         scrollDirection: Axis.horizontal,
         itemCount: items.length,
         separatorBuilder: (_, __) => const SizedBox(width: 14),
@@ -1018,11 +1211,13 @@ class _SectionHeader extends StatelessWidget {
     required this.title,
     required this.accent,
     this.actionLabel,
+    this.onAction,
   });
 
   final String title;
   final Color accent;
   final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -1056,29 +1251,262 @@ class _SectionHeader extends StatelessWidget {
             ),
             const Spacer(),
             if (actionLabel != null)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
+              Material(
+                color: Colors.white.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(999),
+                child: InkWell(
+                  onTap: onAction,
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Colors.white.withOpacity(0.04)),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white.withOpacity(0.04)),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Text(
+                          actionLabel!,
+                          style: TextStyle(
+                            color: onAction == null
+                                ? AppColors.textMuted
+                                : AppColors.text,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: onAction == null
+                              ? AppColors.textMuted
+                              : AppColors.text,
+                          size: 16,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MediaListScreen extends StatelessWidget {
+  const _MediaListScreen({
+    required this.title,
+    required this.items,
+    required this.settings,
+    required this.accent,
+    required this.onOpen,
+  });
+
+  final String title;
+  final List<MediaSummary> items;
+  final AppSettings settings;
+  final Color accent;
+  final ValueChanged<MediaSummary> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool wide = MediaQuery.of(context).size.width >= 700;
+    return Scaffold(
+      backgroundColor: LayoutOptions.backgroundFor(settings),
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: <Widget>[
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+              sliver: SliverToBoxAdapter(
                 child: Row(
                   children: <Widget>[
+                    IconButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      color: AppColors.text,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontSize: 28,
+                          height: 1.05,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accent.withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${items.length}',
+                        style: TextStyle(
+                          color: accent,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: wide ? 4 : 2,
+                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 14,
+                  childAspectRatio:
+                      settings.posterLandscapeEnabled ? 1.15 : 0.68,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (BuildContext context, int index) {
+                    final MediaSummary item = items[index];
+                    return _BrowseGridCard(
+                      rank: index + 1,
+                      item: item,
+                      settings: settings,
+                      accent: accent,
+                      onTap: () => onOpen(item),
+                    );
+                  },
+                  childCount: items.length,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BrowseGridCard extends StatelessWidget {
+  const _BrowseGridCard({
+    required this.rank,
+    required this.item,
+    required this.settings,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final int rank;
+  final MediaSummary item;
+  final AppSettings settings;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? imagePath = settings.posterLandscapeEnabled
+        ? (item.backdropPath ?? item.posterPath)
+        : (item.posterPath ?? item.backdropPath);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(
+            LayoutOptions.posterRadius(settings),
+          ),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            if (imagePath == null)
+              const ColoredBox(color: AppColors.cardBackground)
+            else
+              Image.network(
+                getImageUrl(
+                  imagePath,
+                  settings.posterLandscapeEnabled ? 'w780' : 'w342',
+                ),
+                fit: BoxFit.cover,
+                errorBuilder: (
+                  BuildContext context,
+                  Object error,
+                  StackTrace? stackTrace,
+                ) {
+                  return const ColoredBox(color: AppColors.cardBackground);
+                },
+              ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[
+                    Colors.black.withOpacity(0.02),
+                    Colors.black.withOpacity(0.18),
+                    Colors.black.withOpacity(0.88),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              left: 10,
+              top: 10,
+              child: Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.92),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  rank.toString(),
+                  style: const TextStyle(
+                    color: AppColors.background,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+            if (!settings.posterHideLabels)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
                     Text(
-                      actionLabel!,
+                      item.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppColors.text,
+                        fontSize: 14,
+                        height: 1.08,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _year(item.releaseDate),
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
-                    ),
-                    const SizedBox(width: 2),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: AppColors.text,
-                      size: 16,
                     ),
                   ],
                 ),
@@ -1109,7 +1537,7 @@ class _ContinueWatchingRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool posterStyle = settings.continueWatchingStyle == 'poster';
     return SizedBox(
-      height: posterStyle ? 190 : 154,
+      height: posterStyle ? 194 : 166,
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 0, 24, 0),
         scrollDirection: Axis.horizontal,
@@ -1172,8 +1600,8 @@ class _GlanceContinueCard extends StatelessWidget {
         GestureDetector(
           onTap: onOpen,
           child: Container(
-            width: 304,
-            height: 142,
+            width: 330,
+            height: 150,
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
@@ -1186,32 +1614,44 @@ class _GlanceContinueCard extends StatelessWidget {
                 Row(
                   children: <Widget>[
                     SizedBox(
-                      width: 92,
+                      width: 102,
                       height: double.infinity,
                       child: _HistoryArtwork(item: item, blur: blur),
                     ),
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 14, 12, 12),
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
+                            Text(
+                              item.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.text,
+                                fontSize: 17,
+                                height: 1.05,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
                             Row(
                               children: <Widget>[
                                 Expanded(
                                   child: Text(
-                                    item.title,
-                                    maxLines: 2,
+                                    _subtitle(item),
+                                    maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                      color: AppColors.text,
-                                      fontSize: 17,
-                                      height: 1.05,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: -0.3,
+                                      color: AppColors.textMuted,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ),
+                                const SizedBox(width: 10),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 10,
@@ -1222,7 +1662,7 @@ class _GlanceContinueCard extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(999),
                                   ),
                                   child: const Text(
-                                    'Up next',
+                                    'Resume',
                                     style: TextStyle(
                                       color: AppColors.background,
                                       fontSize: 11,
@@ -1232,21 +1672,13 @@ class _GlanceContinueCard extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _subtitle(item),
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 6),
                             Text(
                               _timeLeft(item),
                               style: const TextStyle(
                                 color: AppColors.textSubtle,
-                                fontSize: 12,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                             const Spacer(),
@@ -1270,8 +1702,8 @@ class _GlanceContinueCard extends StatelessWidget {
           ),
         ),
         Positioned(
-          top: 8,
-          right: 8,
+          top: 10,
+          right: 10,
           child: _RemovePill(onTap: onRemove),
         ),
       ],
@@ -1503,7 +1935,7 @@ class _NewReleaseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final double width = LayoutOptions.posterWidth(settings) + 18;
-    final double height = settings.posterLandscapeEnabled ? 150 : 225;
+    final double height = settings.posterLandscapeEnabled ? 142 : 210;
     final String? imagePath = settings.posterLandscapeEnabled
         ? (item.backdropPath ?? item.posterPath)
         : (item.posterPath ?? item.backdropPath);
@@ -1596,8 +2028,16 @@ String _subtitle(WatchHistoryItem item) {
 }
 
 String _timeLeft(WatchHistoryItem item) {
-  final int remainingSeconds = item.duration - item.currentTime;
-  final int remainingMinutes = (remainingSeconds / 60).ceil();
+  final int remainingMs = (item.duration - item.currentTime).clamp(
+    0,
+    item.duration > 0 ? item.duration : 0,
+  );
+  if (remainingMs <= 0) {
+    return 'Ready to finish';
+  }
+
+  final int remainingMinutes =
+      (Duration(milliseconds: remainingMs).inSeconds / 60).ceil();
   if (remainingMinutes < 60) {
     return '$remainingMinutes min left';
   }
@@ -1605,6 +2045,18 @@ String _timeLeft(WatchHistoryItem item) {
   final int hours = remainingMinutes ~/ 60;
   final int minutes = remainingMinutes % 60;
   return '${hours}h ${minutes}m left';
+}
+
+String _formatWatchTime(int milliseconds) {
+  final Duration duration =
+      Duration(milliseconds: milliseconds.clamp(0, milliseconds));
+  final int hours = duration.inHours;
+  final int minutes = duration.inMinutes.remainder(60);
+  final int seconds = duration.inSeconds.remainder(60);
+  if (hours > 0) {
+    return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+  return '${duration.inMinutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
 }
 
 String _year(String date) => date.isEmpty ? '' : date.split('-').first;
