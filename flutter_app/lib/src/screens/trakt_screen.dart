@@ -131,9 +131,14 @@ class _TraktScreenState extends State<TraktScreen> {
     final bool hasCredentials =
         await widget.traktApiService.hasUsableCredentials();
     if (!hasCredentials) {
+      if (mounted) {
+        setState(() {
+          _showAdvanced = true;
+        });
+      }
       throw const TraktApiException(
         detail:
-            'This build does not include Trakt app credentials yet. Open Advanced setup and add your own Trakt app credentials.',
+            'Trakt login is not configured in this APK yet. Add TRAKT_CLIENT_ID and TRAKT_CLIENT_SECRET as GitHub secrets, rebuild, or enter your own Trakt app credentials below.',
       );
     }
   }
@@ -163,8 +168,11 @@ class _TraktScreenState extends State<TraktScreen> {
       }
       setState(() {
         _busy = false;
-        _status = error.toString();
+        _status = error is TraktApiException ? error.detail : error.toString();
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_status ?? 'Could not start Trakt login.')),
+      );
     }
   }
 
@@ -319,7 +327,12 @@ class _TraktScreenState extends State<TraktScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
-                            onPressed: _busy ? null : _startLogin,
+                            onPressed: _busy
+                                ? null
+                                : () {
+                                    FocusScope.of(context).unfocus();
+                                    unawaited(_startLogin());
+                                  },
                             style: FilledButton.styleFrom(
                               backgroundColor: _accent,
                               foregroundColor: AppColors.background,
@@ -331,6 +344,10 @@ class _TraktScreenState extends State<TraktScreen> {
                             child: const Text('Open Trakt Login'),
                           ),
                         ),
+                        if ((_status ?? '').isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 12),
+                          _StatusPanel(status: _status!, accent: _accent),
+                        ],
                         const SizedBox(height: 10),
                         SizedBox(
                           width: double.infinity,
@@ -381,16 +398,6 @@ class _TraktScreenState extends State<TraktScreen> {
                                     !_hasManualCredentials,
                           ),
                         ],
-                      ],
-                      if ((_status ?? '').isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 14),
-                        Text(
-                          _status!,
-                          style: const TextStyle(
-                            color: AppColors.textMuted,
-                            height: 1.4,
-                          ),
-                        ),
                       ],
                     ],
                   ),
@@ -666,6 +673,38 @@ class _ConnectedPanel extends StatelessWidget {
           child: const Text('Disconnect'),
         ),
       ],
+    );
+  }
+}
+
+class _StatusPanel extends StatelessWidget {
+  const _StatusPanel({
+    required this.status,
+    required this.accent,
+  });
+
+  final String status;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withOpacity(0.18)),
+      ),
+      child: Text(
+        status,
+        style: const TextStyle(
+          color: AppColors.text,
+          fontSize: 12.5,
+          height: 1.3,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }

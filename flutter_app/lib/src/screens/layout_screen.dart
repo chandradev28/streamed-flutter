@@ -199,14 +199,14 @@ class _ContinueWatchingLayoutScreenState
         child: _loading
             ? Center(child: CircularProgressIndicator(color: _accent))
             : ListView(
-                padding: const EdgeInsets.fromLTRB(22, 24, 22, 110),
+                padding: const EdgeInsets.fromLTRB(14, 22, 14, 88),
                 children: <Widget>[
                   const _LayoutTitle(title: 'Continue\nWatching'),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 14),
                   const _SectionLabel('VISIBILITY'),
-                  _SettingsCard(
+                  _ContinueSettingsCard(
                     children: <Widget>[
-                      _ToggleRow(
+                      _CompactToggleRow(
                         title: 'Show Continue Watching',
                         subtitle:
                             'Display the Continue Watching shelf on the Home screen.',
@@ -218,7 +218,7 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
                   const _SectionLabel('POSTER CARD STYLE'),
                   Row(
                     children: <Widget>[
@@ -249,11 +249,11 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 14),
                   const _SectionLabel('UP NEXT BEHAVIOR'),
-                  _SettingsCard(
+                  _ContinueSettingsCard(
                     children: <Widget>[
-                      _ToggleRow(
+                      _CompactToggleRow(
                         title: 'Prefer Episode Thumbnails',
                         subtitle:
                             'Prefer episode thumbnails in Continue Watching when available.',
@@ -265,7 +265,8 @@ class _ContinueWatchingLayoutScreenState
                           ),
                         ),
                       ),
-                      _ToggleRow(
+                      const SizedBox(height: 10),
+                      _CompactToggleRow(
                         title: 'Up Next From Furthest Episode',
                         subtitle:
                             'Show next episode based on the furthest watched episode.',
@@ -277,7 +278,8 @@ class _ContinueWatchingLayoutScreenState
                           ),
                         ),
                       ),
-                      _ToggleRow(
+                      const SizedBox(height: 10),
+                      _CompactToggleRow(
                         title: 'Show Unaired Next Up Episodes',
                         subtitle: 'Include upcoming episodes before they air.',
                         value: _settings.continueWatchingShowUnaired,
@@ -288,7 +290,8 @@ class _ContinueWatchingLayoutScreenState
                           ),
                         ),
                       ),
-                      _ToggleRow(
+                      const SizedBox(height: 10),
+                      _CompactToggleRow(
                         title: 'Blur Unwatched in Continue Watching',
                         subtitle:
                             'Blur next episode thumbnails to avoid spoilers.',
@@ -302,11 +305,11 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 14),
                   const _SectionLabel('ON LAUNCH'),
-                  _SettingsCard(
+                  _ContinueSettingsCard(
                     children: <Widget>[
-                      _ToggleRow(
+                      _CompactToggleRow(
                         title: 'Resume prompt on launch',
                         subtitle:
                             'Show a popup to continue where you left off when opening the app.',
@@ -320,18 +323,14 @@ class _ContinueWatchingLayoutScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 14),
                   const _SectionLabel('SORT ORDER'),
-                  _SettingsCard(
-                    children: <Widget>[
-                      _NavigationRow(
-                        title: 'Sort Order',
-                        subtitle: _sortOrderLabel(
-                            _settings.continueWatchingSortOrder),
-                        accent: _accent,
-                        onTap: _showSortOrderSheet,
-                      ),
-                    ],
+                  _CompactNavigationTile(
+                    title: 'Sort Order',
+                    subtitle: _sortOrderLabel(
+                      _settings.continueWatchingSortOrder,
+                    ),
+                    onTap: _showSortOrderSheet,
                   ),
                 ],
               ),
@@ -409,24 +408,34 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                 padding: const EdgeInsets.fromLTRB(22, 24, 22, 110),
                 children: <Widget>[
                   const _LayoutTitle(title: 'Poster Card\nStyle'),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: _SoftActionButton(
-                      label: 'Reset to Default',
-                      accent: _accent,
-                      onTap: _reset,
-                    ),
+                  const SizedBox(height: 22),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      const Expanded(
+                        child: _SectionLabel(
+                          'POSTER CARD STYLE',
+                          bottomPadding: 0,
+                        ),
+                      ),
+                      _SoftActionButton(
+                        label: 'Reset to Default',
+                        accent: _accent,
+                        onTap: _reset,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 18),
-                  const _SectionLabel('POSTER CARD STYLE'),
+                  const SizedBox(height: 12),
                   _SettingsCard(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                    borderRadius: 8,
                     children: <Widget>[
                       const Text(
                         'Tune card width and corner radius.',
                         style: TextStyle(
                           color: AppColors.textMuted,
-                          fontSize: 14,
+                          fontSize: 14.5,
+                          height: 1.25,
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -435,50 +444,58 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                         style: TextStyle(
                           color: AppColors.text,
                           fontWeight: FontWeight.w800,
+                          fontSize: 17,
                         ),
                       ),
                       const SizedBox(height: 10),
-                      Center(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          width: width,
-                          height: height,
-                          decoration: BoxDecoration(
-                            color: Color.alphaBlend(
-                              _accent.withOpacity(0.10),
-                              AppColors.cardBackground,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            width: width,
+                            height: height,
+                            decoration: BoxDecoration(
+                              color: Color.alphaBlend(
+                                _accent.withOpacity(0.10),
+                                AppColors.cardBackground,
+                              ),
+                              borderRadius: BorderRadius.circular(radius),
+                              border: Border.all(
+                                color: _accent.withOpacity(0.40),
+                              ),
                             ),
-                            borderRadius: BorderRadius.circular(radius),
-                            border: Border.all(
-                              color: _accent.withOpacity(0.40),
-                            ),
-                          ),
-                          child: Align(
-                            alignment: Alignment.bottomCenter,
-                            child: Container(
-                              margin: const EdgeInsets.all(16),
-                              height: 5,
-                              width: width * 0.42,
-                              decoration: BoxDecoration(
-                                color: _accent,
-                                borderRadius: BorderRadius.circular(99),
+                            child: Align(
+                              alignment: Alignment.bottomCenter,
+                              child: Container(
+                                margin: const EdgeInsets.all(16),
+                                height: 5,
+                                width: width * 0.42,
+                                decoration: BoxDecoration(
+                                  color: _accent,
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                          const SizedBox(width: 28),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: _PreviewMetrics(
+                                values: <String, String>{
+                                  'Width': '${width.round()}dp',
+                                  'Corner radius': '${radius.round()}dp',
+                                  'Height': '${height.round()}dp',
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 14),
-                      _PreviewMetrics(
-                        accent: _accent,
-                        values: <String, String>{
-                          'Width': '${width.round()}dp',
-                          'Radius': '${radius.round()}dp',
-                          'Height': '${height.round()}dp',
-                        },
-                      ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 28),
                       Divider(color: Colors.white.withOpacity(0.08)),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 18),
                       Text(
                         'Width (${LayoutOptions.posterWidthLabel(_settings.posterWidthPreset)})',
                         style: const TextStyle(
@@ -487,7 +504,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           fontSize: 16,
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       _ChoiceWrap(
                         values: const <String>[
                           'compact',
@@ -504,7 +521,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           _settings.copyWith(posterWidthPreset: value),
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 22),
                       Text(
                         'Corner Radius (${LayoutOptions.posterRadiusLabel(_settings.posterRadiusPreset)})',
                         style: const TextStyle(
@@ -513,7 +530,7 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           fontSize: 16,
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       _ChoiceWrap(
                         values: const <String>[
                           'sharp',
@@ -529,8 +546,8 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           _settings.copyWith(posterRadiusPreset: value),
                         ),
                       ),
-                      const SizedBox(height: 18),
-                      _ToggleRow(
+                      const SizedBox(height: 24),
+                      _PosterToggleRow(
                         title: 'Landscape Posters',
                         value: _settings.posterLandscapeEnabled,
                         accent: _accent,
@@ -538,7 +555,8 @@ class _PosterCardStyleScreenState extends State<PosterCardStyleScreen> {
                           _settings.copyWith(posterLandscapeEnabled: value),
                         ),
                       ),
-                      _ToggleRow(
+                      const SizedBox(height: 18),
+                      _PosterToggleRow(
                         title: 'Hide labels',
                         value: _settings.posterHideLabels,
                         accent: _accent,
@@ -718,14 +736,18 @@ class _SoftActionButton extends StatelessWidget {
 }
 
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.label);
+  const _SectionLabel(
+    this.label, {
+    this.bottomPadding = 10,
+  });
 
   final String label;
+  final double bottomPadding;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 2, bottom: 10),
+      padding: EdgeInsets.only(left: 2, bottom: bottomPadding),
       child: Text(
         label,
         style: const TextStyle(
@@ -740,7 +762,36 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _SettingsCard extends StatelessWidget {
-  const _SettingsCard({required this.children});
+  const _SettingsCard({
+    required this.children,
+    this.padding = const EdgeInsets.fromLTRB(18, 16, 18, 16),
+    this.borderRadius = 22,
+  });
+
+  final List<Widget> children;
+  final EdgeInsetsGeometry padding;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+}
+
+class _ContinueSettingsCard extends StatelessWidget {
+  const _ContinueSettingsCard({required this.children});
 
   final List<Widget> children;
 
@@ -748,15 +799,144 @@ class _SettingsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: children,
+      ),
+    );
+  }
+}
+
+class _CompactToggleRow extends StatelessWidget {
+  const _CompactToggleRow({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.accent,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final Color accent;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 12.5,
+                    height: 1.12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 10.8,
+                    height: 1.18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Transform.scale(
+          scale: 0.76,
+          child: Switch(
+            value: value,
+            activeColor: accent,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactNavigationTile extends StatelessWidget {
+  const _CompactNavigationTile({
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.cardBackground,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+          ),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 12.5,
+                        height: 1.1,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 10.8,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textMuted,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -885,6 +1065,46 @@ class _ToggleRow extends StatelessWidget {
   }
 }
 
+class _PosterToggleRow extends StatelessWidget {
+  const _PosterToggleRow({
+    required this.title,
+    required this.value,
+    required this.accent,
+    required this.onChanged,
+  });
+
+  final String title;
+  final bool value;
+  final Color accent;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 17,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        Transform.scale(
+          scale: 0.88,
+          child: Switch(
+            value: value,
+            activeColor: accent,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ContinueStyleCard extends StatelessWidget {
   const _ContinueStyleCard({
     required this.title,
@@ -908,13 +1128,13 @@ class _ContinueStyleCard extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        height: 136,
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        height: 184,
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
         decoration: BoxDecoration(
           color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: selected ? accent.withOpacity(0.85) : AppColors.border,
+            color: selected ? AppColors.text : AppColors.border,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -925,18 +1145,31 @@ class _ContinueStyleCard extends StatelessWidget {
               alignment: Alignment.topRight,
               child: Icon(
                 selected ? Icons.check_circle_rounded : Icons.circle_outlined,
-                color: selected ? accent : AppColors.textMuted,
-                size: 18,
+                color: selected ? AppColors.text : AppColors.textMuted,
+                size: 17,
               ),
             ),
-            const SizedBox(height: 6),
-            Icon(icon, color: AppColors.textMuted, size: 28),
-            const Spacer(),
+            const SizedBox(height: 8),
+            Expanded(
+              child: Center(
+                child: Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(maxWidth: 94),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.035),
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  ),
+                  child: Icon(icon, color: AppColors.textMuted, size: 34),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
             Text(
               title,
               style: const TextStyle(
                 color: AppColors.text,
-                fontSize: 15,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -947,8 +1180,8 @@ class _ContinueStyleCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: AppColors.textMuted,
-                fontSize: 11.5,
-                height: 1.18,
+                fontSize: 10.5,
+                height: 1.12,
               ),
             ),
           ],
@@ -1053,47 +1286,27 @@ class _ChoicePill extends StatelessWidget {
 class _PreviewMetrics extends StatelessWidget {
   const _PreviewMetrics({
     required this.values,
-    required this.accent,
   });
 
   final Map<String, String> values;
-  final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      alignment: WrapAlignment.center,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: values.entries.map((MapEntry<String, String> entry) {
-        return Container(
-          width: 88,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.045),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: accent.withOpacity(0.18)),
-          ),
-          child: Column(
-            children: <Widget>[
-              Text(
-                entry.key,
-                style: const TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                entry.value,
-                style: const TextStyle(
-                  color: AppColors.text,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 5),
+          child: Text(
+            '${entry.key}: ${entry.value}',
+            style: TextStyle(
+              color:
+                  entry.key == 'Height' ? AppColors.textMuted : AppColors.text,
+              fontSize: 16,
+              height: 1.18,
+              fontWeight:
+                  entry.key == 'Height' ? FontWeight.w600 : FontWeight.w800,
+            ),
           ),
         );
       }).toList(growable: false),

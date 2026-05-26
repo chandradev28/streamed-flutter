@@ -45,7 +45,13 @@ jobs:
         run: flutter test --no-pub
 
       - name: Build debug APK
-        run: flutter build apk --debug --no-pub
+        env:
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+        run: >
+          flutter build apk --debug --no-pub
+          --dart-define=TRAKT_CLIENT_ID="$TRAKT_CLIENT_ID"
+          --dart-define=TRAKT_CLIENT_SECRET="$TRAKT_CLIENT_SECRET"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
