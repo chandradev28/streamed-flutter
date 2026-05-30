@@ -94,8 +94,9 @@ class _HomeScreenState extends State<HomeScreen> {
         () => widget.watchHistoryRepository.getContinueWatching(20),
       ),
       _loadTraktWatchlist(),
-      _loadAddonCatalogs(),
     ]);
+
+    _loadAddonCatalogs();
 
     if (!mounted) {
       return;
@@ -110,7 +111,6 @@ class _HomeScreenState extends State<HomeScreen> {
         results[4] as List<WatchHistoryItem>,
       );
       _traktWatchlist = results[5] as List<MediaSummary>;
-      _catalogRows = results[6] as List<AddonCatalogRow>;
       _loading = false;
     });
   }
@@ -187,12 +187,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<List<AddonCatalogRow>> _loadAddonCatalogs() async {
+  Future<void> _loadAddonCatalogs() async {
     try {
-      return await widget.addonsService.fetchAllCatalogRows();
-    } catch (_) {
-      return _catalogRows;
-    }
+      final List<AddonCatalogRow> rows =
+          await widget.addonsService.fetchAllCatalogRows();
+      if (!mounted) return;
+      setState(() {
+        _catalogRows = rows;
+      });
+    } catch (_) {}
   }
 
   void _openCatalogItem(AddonCatalogItem item) {
