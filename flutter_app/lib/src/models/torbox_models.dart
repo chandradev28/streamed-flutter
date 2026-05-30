@@ -841,6 +841,68 @@ class TorBoxTorrent {
   }
 }
 
+class AddonCatalogItem {
+  const AddonCatalogItem({
+    required this.id,
+    required this.type,
+    required this.name,
+    this.poster,
+    this.background,
+    this.description,
+    this.releaseInfo,
+  });
+
+  final String id;
+  final String type;
+  final String name;
+  final String? poster;
+  final String? background;
+  final String? description;
+  final String? releaseInfo;
+
+  String get mediaType => type == 'series' ? 'tv' : type;
+
+  factory AddonCatalogItem.fromJson(Map<String, dynamic> json) {
+    return AddonCatalogItem(
+      id: (json['id'] as String?) ?? '',
+      type: (json['type'] as String?) ?? '',
+      name: (json['name'] as String?) ?? '',
+      poster: json['poster'] as String?,
+      background: json['background'] as String?,
+      description: json['description'] as String?,
+      releaseInfo: json['releaseInfo'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'id': id,
+      'type': type,
+      'name': name,
+      'poster': poster,
+      'background': background,
+      'description': description,
+      'releaseInfo': releaseInfo,
+    };
+  }
+}
+
+class AddonCatalogRow {
+  const AddonCatalogRow({
+    required this.addonName,
+    required this.catalogName,
+    required this.catalog,
+    required this.addon,
+    required this.items,
+  });
+
+  final String addonName;
+  final String catalogName;
+  final AddonCatalog catalog;
+  final AddonManifest addon;
+  final List<AddonCatalogItem> items;
+}
+
 class AddonCatalog {
   const AddonCatalog({
     required this.type,

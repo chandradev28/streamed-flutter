@@ -6,6 +6,7 @@ import '../models/torbox_models.dart';
 import '../models/tmdb_media_models.dart';
 import '../models/watch_history_item.dart';
 import '../services/app_settings_repository.dart';
+import '../services/stremio_addons_service.dart';
 import '../services/tmdb_image.dart';
 import '../services/tmdb_media_service.dart';
 import '../services/trakt_api_service.dart';
@@ -25,17 +26,20 @@ class HomeScreen extends StatefulWidget {
     ContinueWatchingRepository? watchHistoryRepository,
     AppSettingsRepository? settingsRepository,
     TraktApiService? traktApiService,
+    StremioAddonsService? addonsService,
     this.onSettingsChanged,
   })  : mediaService = mediaService ?? TmdbMediaService(),
         watchHistoryRepository =
             watchHistoryRepository ?? WatchHistoryRepository(),
         settingsRepository = settingsRepository ?? AppSettingsRepository(),
-        traktApiService = traktApiService ?? TraktApiService();
+        traktApiService = traktApiService ?? TraktApiService(),
+        addonsService = addonsService ?? StremioAddonsService();
 
   final MediaCatalogService mediaService;
   final ContinueWatchingRepository watchHistoryRepository;
   final AppSettingsRepository settingsRepository;
   final TraktApiService traktApiService;
+  final StremioAddonsService addonsService;
   final Future<void> Function()? onSettingsChanged;
 
   @override
@@ -52,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
   AppSettings _settings = const AppSettings();
   bool _loading = true;
   int _heroIndex = 0;
+  List<AddonCatalogRow> _catalogRows = const <AddonCatalogRow>[];
 
   @override
   void initState() {
@@ -89,6 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
         () => widget.watchHistoryRepository.getContinueWatching(20),
       ),
       _loadTraktWatchlist(),
+      _loadAddonCatalogs(),
     ]);
 
     if (!mounted) {
@@ -104,6 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
         results[4] as List<WatchHistoryItem>,
       );
       _traktWatchlist = results[5] as List<MediaSummary>;
+      _catalogRows = results[6] as List<AddonCatalogRow>;
       _loading = false;
     });
   }
@@ -177,6 +184,56 @@ class _HomeScreenState extends State<HomeScreen> {
           mediaService: widget.mediaService,
         ),
       ),
+    );
+  }
+
+  Future<List<AddonCatalogRow>> _loadAddonCatalogs() async {
+    try {
+      return await widget.addonsService.fetchAllCatalogRows();
+    } catch (_) {
+      return _catalogRows;
+    }
+  }
+
+  void _openCatalogItem(AddonCatalogItem item) {
+    final String imdbId = item.id.startsWith('tt')
+        ? item.id
+        : '';
+
+    if (imdbId.isNotEmpty) {
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (BuildContext context) => StreamedSourcesScreen(
+            title: item.name,
+            posterPath: null,
+            mediaType: item.mediaType,
+            imdbId: imdbId,
+            tmdbId: int.tryParse(RegExp(r'^tmdb:(\d+)').firstMatch(item.id)?.group(1) ?? ''),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final String? tmdbStr =
+        RegExp(r'^tmdb:(\d+)').firstMatch(item.id)?.group(1);
+    if (tmdbStr != null) {
+      final int? tmdbId = int.tryParse(tmdbStr);
+      if (tmdbId != null) {
+        Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (BuildContext context) => MovieDetailScreen(
+              id: tmdbId,
+              mediaType: item.mediaType,
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cannot open this catalog item yet.')),
     );
   }
 
@@ -642,6 +699,24 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
               ),
+              if (_catalogRows.isNotEmpty) ...<Widget>[
+                for (final AddonCatalogRow row in _catalogRows)
+                  ...[
+                    _SectionHeader(
+                      title: row.catalogName,
+                      accent: accent,
+                    ),
+                    SliverToBoxAdapter(
+                      child: _CatalogRail(
+                        items: row.items,
+                        addon: row.addon,
+                        addonsService: widget.addonsService,
+                        onOpen: (AddonCatalogItem item) =>
+                            _openCatalogItem(item),
+                      ),
+                    ),
+                  ],
+              ],
               const SliverToBoxAdapter(child: SizedBox(height: 92)),
             ],
           ),
@@ -2060,3 +2135,104 @@ String _formatWatchTime(int milliseconds) {
 }
 
 String _year(String date) => date.isEmpty ? '' : date.split('-').first;
+
+class _CatalogRail extends StatelessWidget {
+  const _CatalogRail({
+    required this.items,
+    required this.addon,
+    required this.addonsService,
+    required this.onOpen,
+  });
+
+  final List<AddonCatalogItem> items;
+  final AddonManifest addon;
+  final StremioAddonsService addonsService;
+  final ValueChanged<AddonCatalogItem> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    const double cardHeight = 210;
+    return SizedBox(
+      height: cardHeight,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(24, 0, 16, 8),
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
+        itemBuilder: (BuildContext context, int index) {
+          final AddonCatalogItem item = items[index];
+          return _CatalogPosterCard(
+            item: item,
+            posterUrl: addonsService.resolveAddonUrl(
+              addon,
+              item.poster,
+            ),
+            onTap: () => onOpen(item),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CatalogPosterCard extends StatelessWidget {
+  const _CatalogPosterCard({
+    required this.item,
+    required this.posterUrl,
+    required this.onTap,
+  });
+
+  final AddonCatalogItem item;
+  final String posterUrl;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 130,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Container(
+              width: 130,
+              height: 185,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: posterUrl.isEmpty
+                  ? const ColoredBox(color: AppColors.cardBackground)
+                  : Image.network(
+                      posterUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (
+                        BuildContext context,
+                        Object error,
+                        StackTrace? stackTrace,
+                      ) {
+                        return const ColoredBox(
+                          color: AppColors.cardBackground,
+                        );
+                      },
+                    ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              item.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

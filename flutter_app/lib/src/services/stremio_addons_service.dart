@@ -126,6 +126,54 @@ class StremioAddonsService {
         );
   }
 
+  Future<List<AddonCatalogItem>> fetchCatalog(
+    AddonManifest addon,
+    AddonCatalog catalog,
+  ) async {
+    final Uri catalogUri = _buildCatalogUri(addon, catalog);
+    final Map<String, dynamic> payload = await _fetchJson(catalogUri);
+    final List<dynamic> metas =
+        payload['metas'] as List<dynamic>? ?? const <dynamic>[];
+    return metas
+        .map(
+          (dynamic item) =>
+              AddonCatalogItem.fromJson(item as Map<String, dynamic>),
+        )
+        .take(20)
+        .toList(growable: false);
+  }
+
+  String resolveAddonUrl(AddonManifest addon, String? raw) {
+    if (raw == null || raw.isEmpty) return '';
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    return Uri.parse(addon.url).resolve(raw).toString();
+  }
+
+  Future<List<AddonCatalogRow>> fetchAllCatalogRows() async {
+    final List<AddonManifest> addons = await getEnabledAddons();
+    final List<AddonCatalogRow> rows = <AddonCatalogRow>[];
+
+    for (final AddonManifest addon in addons) {
+      if (addon.catalogs.isEmpty) continue;
+      for (final AddonCatalog catalog in addon.catalogs.take(5)) {
+        try {
+          final List<AddonCatalogItem> items =
+              await fetchCatalog(addon, catalog);
+          if (items.isNotEmpty) {
+            rows.add(AddonCatalogRow(
+              addonName: addon.name,
+              catalogName: catalog.name,
+              catalog: catalog,
+              addon: addon,
+              items: items,
+            ));
+          }
+        } catch (_) {}
+      }
+    }
+    return rows;
+  }
+
   Future<List<StreamSource>> getStreams({
     required String mediaType,
     required String streamId,
@@ -345,6 +393,18 @@ class StremioAddonsService {
     final Uri baseUri = Uri.parse(addon.url);
     return baseUri.replace(
       path: '${baseUri.path}/stream/$contentType/$streamId.json'
+          .replaceAll('//', '/'),
+      queryParameters: originalUri.queryParameters.isEmpty
+          ? null
+          : originalUri.queryParameters,
+    );
+  }
+
+  Uri _buildCatalogUri(AddonManifest addon, AddonCatalog catalog) {
+    final Uri originalUri = Uri.parse(addon.originalUrl);
+    final Uri baseUri = Uri.parse(addon.url);
+    return baseUri.replace(
+      path: '${baseUri.path}/catalog/${catalog.type}/${catalog.id}.json'
           .replaceAll('//', '/'),
       queryParameters: originalUri.queryParameters.isEmpty
           ? null
