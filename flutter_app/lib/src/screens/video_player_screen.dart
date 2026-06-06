@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:fvp/fvp.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../models/torbox_models.dart';
 import '../models/watch_history_item.dart';
@@ -110,6 +111,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(WakelockPlus.enable());
     _files = widget.initialFiles;
     _resolvedUrl = widget.initialVideoUrl;
     _activeFileId = widget.initialFileId;
@@ -1305,6 +1307,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _progressTimer?.cancel();
     _controller?.removeListener(_handleControllerTick);
     _controller?.dispose();
+    unawaited(WakelockPlus.disable());
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
