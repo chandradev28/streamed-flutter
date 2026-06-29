@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_app/src/models/tmdb_media_models.dart';
+import 'package:flutter_app/src/models/torbox_models.dart';
 import 'package:flutter_app/src/models/watch_history_item.dart';
 import 'package:flutter_app/src/screens/home_screen.dart';
+import 'package:flutter_app/src/services/stremio_addons_service.dart';
 
 import 'test_fakes.dart';
 
 void main() {
-  testWidgets('renders home sections and continue watching cards', (
+  testWidgets('renders addon catalog shelves and continue watching cards', (
     WidgetTester tester,
   ) async {
+    final _FakeAddonsService addonsService = _FakeAddonsService.withCatalogs();
+
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
           mediaService: const FakeMediaService(),
           settingsRepository: FakeAppSettingsRepository(),
+          addonsService: addonsService,
           watchHistoryRepository: const FakeWatchHistoryRepository(
             items: <WatchHistoryItem>[
               WatchHistoryItem(
@@ -68,32 +72,25 @@ void main() {
     expect(find.text('Space Show'), findsOneWidget);
 
     await tester.scrollUntilVisible(
-      find.text('Top 10 Movies This Week'),
+      find.text('Featured Movies'),
       160,
       scrollable: find.byType(Scrollable).first,
     );
 
-    expect(find.text('Top 10 Movies This Week'), findsOneWidget);
-    expect(find.text('Top 10 Series This Week'), findsOneWidget);
-
-    await tester.scrollUntilVisible(
-      find.text('New Releases'),
-      160,
-      scrollable: find.byType(Scrollable).first,
-    );
-
-    expect(find.text('New Releases'), findsOneWidget);
-    expect(find.text('Trending One'), findsWidgets);
+    expect(find.text('Featured Movies'), findsOneWidget);
+    expect(find.text('AIOStreams'), findsWidgets);
+    expect(find.text('Addon Poster One'), findsWidgets);
   });
 
-  testWidgets('keeps rendering available home rows when one fetch fails', (
+  testWidgets('shows addon setup state when no catalog rows exist', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
-          mediaService: const _NowPlayingFailureMediaService(),
+          mediaService: const FakeMediaService(),
           settingsRepository: FakeAppSettingsRepository(),
+          addonsService: _FakeAddonsService.empty(),
           watchHistoryRepository: const FakeWatchHistoryRepository(),
         ),
       ),
@@ -102,31 +99,97 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Trending One'), findsWidgets);
-
-    await tester.scrollUntilVisible(
-      find.text('Top 10 Movies This Week'),
-      160,
-      scrollable: find.byType(Scrollable).first,
-    );
-
-    expect(find.text('Top 10 Movies This Week'), findsOneWidget);
-
-    await tester.scrollUntilVisible(
-      find.text('New Releases'),
-      160,
-      scrollable: find.byType(Scrollable).first,
-    );
-
-    expect(find.text('New Releases'), findsOneWidget);
+    expect(find.text('Add your first catalog addon'), findsOneWidget);
+    expect(find.text('Manage addons'), findsOneWidget);
+    expect(find.text('Top 10 Movies This Week'), findsNothing);
+    expect(find.text('New Releases'), findsNothing);
   });
 }
 
-class _NowPlayingFailureMediaService extends FakeMediaService {
-  const _NowPlayingFailureMediaService();
+class _FakeAddonsService extends StremioAddonsService {
+  _FakeAddonsService({
+    required this.addons,
+    required this.rows,
+  });
+
+  factory _FakeAddonsService.empty() {
+    return _FakeAddonsService(
+      addons: const <AddonManifest>[],
+      rows: const <AddonCatalogRow>[],
+    );
+  }
+
+  factory _FakeAddonsService.withCatalogs() {
+    const AddonManifest addon = AddonManifest(
+      id: 'aiostreams',
+      name: 'AIOStreams',
+      version: '1.0.0',
+      url: 'https://example.test/addon',
+      originalUrl: 'https://example.test/addon/manifest.json',
+      types: <String>['movie', 'series'],
+      resources: <AddonResource>[
+        AddonResource(
+          name: 'catalog',
+          types: <String>['movie'],
+          idPrefixes: <String>[],
+        ),
+      ],
+      catalogs: <AddonCatalog>[
+        AddonCatalog(
+          type: 'movie',
+          id: 'featured',
+          name: 'Featured Movies',
+        ),
+      ],
+    );
+
+    const AddonCatalog catalog = AddonCatalog(
+      type: 'movie',
+      id: 'featured',
+      name: 'Featured Movies',
+    );
+
+    return _FakeAddonsService(
+      addons: const <AddonManifest>[addon],
+      rows: const <AddonCatalogRow>[
+        AddonCatalogRow(
+          addonName: 'AIOStreams',
+          catalogName: 'Featured Movies',
+          catalog: catalog,
+          addon: addon,
+          items: <AddonCatalogItem>[
+            AddonCatalogItem(
+              id: 'tt0000001',
+              type: 'movie',
+              name: 'Addon Poster One',
+              poster: '/poster-one.jpg',
+              background: '/backdrop-one.jpg',
+              releaseInfo: '2026',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  final List<AddonManifest> addons;
+  final List<AddonCatalogRow> rows;
 
   @override
-  Future<List<MediaSummary>> getNowPlayingMovies() async {
-    throw Exception('network blink');
+  Future<List<AddonManifest>> getInstalledAddons() async {
+    return addons;
+  }
+
+  @override
+  Future<List<AddonCatalogRow>> fetchAllCatalogRows() async {
+    return rows;
+  }
+
+  @override
+  String resolveAddonUrl(AddonManifest addon, String? raw) {
+    if (raw == null || raw.isEmpty) {
+      return '';
+    }
+    return raw.startsWith('http') ? raw : '${addon.url}$raw';
   }
 }

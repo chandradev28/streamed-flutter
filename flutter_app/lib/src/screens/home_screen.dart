@@ -13,6 +13,7 @@ import '../services/trakt_api_service.dart';
 import '../services/watch_history_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/layout_options.dart';
+import 'addons_screen.dart';
 import 'episode_screen.dart';
 import 'movie_detail_screen.dart';
 import 'profile_screen.dart';
@@ -48,15 +49,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final PageController _heroController = PageController();
-  List<MediaSummary> _trending = const <MediaSummary>[];
-  List<MediaSummary> _trendingSeries = const <MediaSummary>[];
-  List<MediaSummary> _newReleases = const <MediaSummary>[];
-  List<MediaSummary> _traktWatchlist = const <MediaSummary>[];
   List<WatchHistoryItem> _continueWatching = const <WatchHistoryItem>[];
   AppSettings _settings = const AppSettings();
   bool _loading = true;
   int _heroIndex = 0;
   List<AddonCatalogRow> _catalogRows = const <AddonCatalogRow>[];
+  List<AddonManifest> _installedAddons = const <AddonManifest>[];
 
   @override
   void initState() {
@@ -77,90 +75,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final List<dynamic> results = await Future.wait<dynamic>(<Future<dynamic>>[
       widget.settingsRepository.loadSettings(),
-      _loadOrKeep<MediaSummary>(
-        _trending,
-        widget.mediaService.getTrendingMovies,
-      ),
-      _loadOrKeep<MediaSummary>(
-        _trendingSeries,
-        widget.mediaService.getTrendingSeries,
-      ),
-      _loadOrKeep<MediaSummary>(
-        _newReleases,
-        widget.mediaService.getNowPlayingMovies,
-      ),
       _loadOrKeep<WatchHistoryItem>(
         _continueWatching,
         () => widget.watchHistoryRepository.getContinueWatching(20),
       ),
-      _loadTraktWatchlist(),
+      widget.addonsService.getInstalledAddons(),
+      widget.addonsService.fetchAllCatalogRows(),
     ]);
-
-    _loadAddonCatalogs();
 
     if (!mounted) {
       return;
     }
 
+    final AppSettings settings = results[0] as AppSettings;
     setState(() {
-      _settings = results[0] as AppSettings;
-      _trending = results[1] as List<MediaSummary>;
-      _trendingSeries = results[2] as List<MediaSummary>;
-      _newReleases = results[3] as List<MediaSummary>;
+      _settings = settings;
       _continueWatching = _sortContinueWatching(
-        results[4] as List<WatchHistoryItem>,
+        results[1] as List<WatchHistoryItem>,
+        settings,
       );
-      _traktWatchlist = results[5] as List<MediaSummary>;
+      _installedAddons = results[2] as List<AddonManifest>;
+      _catalogRows = results[3] as List<AddonCatalogRow>;
       _loading = false;
     });
-  }
-
-  Future<List<MediaSummary>> _loadTraktWatchlist() async {
-    try {
-      final AppSettings settings =
-          await widget.settingsRepository.loadSettings();
-      if ((settings.traktAccessToken ?? '').isEmpty ||
-          !settings.traktSyncWatchlistEnabled) {
-        return _traktWatchlist;
-      }
-      final List<TraktWatchlistItem> items =
-          await widget.traktApiService.getWatchlist();
-      final List<MediaSummary> summaries = <MediaSummary>[];
-      for (final TraktWatchlistItem item in items.take(10)) {
-        final int? tmdbId = item.tmdbId;
-        if (tmdbId == null) {
-          continue;
-        }
-        try {
-          final MediaDetail detail =
-              await widget.mediaService.getMediaDetail(tmdbId, item.mediaType);
-          summaries.add(
-            MediaSummary(
-              id: detail.id,
-              mediaType: detail.mediaType,
-              title: detail.title,
-              posterPath: detail.posterPath,
-              backdropPath: detail.backdropPath,
-              releaseDate: detail.releaseDate,
-            ),
-          );
-        } catch (_) {
-          summaries.add(
-            MediaSummary(
-              id: tmdbId,
-              mediaType: item.mediaType,
-              title: item.title,
-              posterPath: null,
-              backdropPath: null,
-              releaseDate: item.year?.toString() ?? '',
-            ),
-          );
-        }
-      }
-      return summaries;
-    } catch (_) {
-      return _traktWatchlist;
-    }
   }
 
   Future<List<T>> _loadOrKeep<T>(
@@ -175,33 +112,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openMedia(MediaSummary item) {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => MovieDetailScreen(
-          id: item.id,
-          mediaType: item.mediaType,
-          mediaService: widget.mediaService,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _loadAddonCatalogs() async {
-    try {
-      final List<AddonCatalogRow> rows =
-          await widget.addonsService.fetchAllCatalogRows();
-      if (!mounted) return;
-      setState(() {
-        _catalogRows = rows;
-      });
-    } catch (_) {}
-  }
-
   void _openCatalogItem(AddonCatalogItem item) {
-    final String imdbId = item.id.startsWith('tt')
-        ? item.id
-        : '';
+    final String imdbId = item.id.startsWith('tt') ? item.id : '';
 
     if (imdbId.isNotEmpty) {
       Navigator.of(context).push<void>(
@@ -211,7 +123,8 @@ class _HomeScreenState extends State<HomeScreen> {
             posterPath: null,
             mediaType: item.mediaType,
             imdbId: imdbId,
-            tmdbId: int.tryParse(RegExp(r'^tmdb:(\d+)').firstMatch(item.id)?.group(1) ?? ''),
+            tmdbId: int.tryParse(
+                RegExp(r'^tmdb:(\d+)').firstMatch(item.id)?.group(1) ?? ''),
           ),
         ),
       );
@@ -237,23 +150,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Cannot open this catalog item yet.')),
-    );
-  }
-
-  void _openMediaList({
-    required String title,
-    required List<MediaSummary> items,
-  }) {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => _MediaListScreen(
-          title: title,
-          items: items,
-          settings: _settings,
-          accent: LayoutOptions.accentFor(_settings),
-          onOpen: _openMedia,
-        ),
-      ),
     );
   }
 
@@ -472,9 +368,25 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  List<WatchHistoryItem> _sortContinueWatching(List<WatchHistoryItem> items) {
+  Future<void> _openAddons() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => AddonsScreen(),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    await _loadHome();
+  }
+
+  List<WatchHistoryItem> _sortContinueWatching(
+    List<WatchHistoryItem> items, [
+    AppSettings? settings,
+  ]) {
+    final AppSettings activeSettings = settings ?? _settings;
     final List<WatchHistoryItem> sorted = items.toList(growable: false);
-    if (_settings.continueWatchingSortOrder == 'streaming') {
+    if (activeSettings.continueWatchingSortOrder == 'streaming') {
       sorted.sort((WatchHistoryItem a, WatchHistoryItem b) {
         final int type = _streamingWeight(a).compareTo(_streamingWeight(b));
         if (type != 0) {
@@ -503,11 +415,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<MediaSummary> heroItems = <MediaSummary>[
-      ..._trending.take(4),
-      ..._trendingSeries.take(4),
-    ];
     final Color accent = LayoutOptions.accentFor(_settings);
+    final AddonCatalogRow? heroRow =
+        _catalogRows.isEmpty ? null : _catalogRows.first;
+    final List<AddonCatalogItem> heroItems = heroRow == null
+        ? const <AddonCatalogItem>[]
+        : heroRow.items.take(8).toList();
+    final bool hasEnabledCatalogAddon = _installedAddons.any(
+      (AddonManifest addon) => addon.enabled && addon.catalogs.isNotEmpty,
+    );
 
     return Scaffold(
       backgroundColor: LayoutOptions.backgroundFor(_settings),
@@ -543,7 +459,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 SizedBox(height: 2),
                                 Text(
-                                  'Movies, shows, and TorBox tools',
+                                  'Powered by your Stremio addons',
                                   style: TextStyle(
                                     color: AppColors.textMuted,
                                     fontSize: 12,
@@ -576,22 +492,34 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              SliverToBoxAdapter(
-                child: _loading && heroItems.isEmpty
-                    ? const _HeroSkeleton()
-                    : _HomeHeroCarousel(
-                        controller: _heroController,
-                        items: heroItems,
-                        activeIndex: _heroIndex,
-                        accent: accent,
-                        onPageChanged: (int index) {
-                          setState(() {
-                            _heroIndex = index;
-                          });
-                        },
-                        onOpen: _openMedia,
-                      ),
-              ),
+              if (_loading && _catalogRows.isEmpty)
+                const SliverToBoxAdapter(child: _HeroSkeleton())
+              else if (_catalogRows.isEmpty)
+                SliverToBoxAdapter(
+                  child: _AddonHomeEmptyState(
+                    hasInstalledAddons: _installedAddons.isNotEmpty,
+                    hasEnabledCatalogAddon: hasEnabledCatalogAddon,
+                    accent: accent,
+                    onOpenAddons: _openAddons,
+                  ),
+                )
+              else
+                SliverToBoxAdapter(
+                  child: _AddonHeroCarousel(
+                    controller: _heroController,
+                    items: heroItems,
+                    addon: heroRow!.addon,
+                    activeIndex: _heroIndex,
+                    accent: accent,
+                    addonsService: widget.addonsService,
+                    onPageChanged: (int index) {
+                      setState(() {
+                        _heroIndex = index;
+                      });
+                    },
+                    onOpen: _openCatalogItem,
+                  ),
+                ),
               if (_settings.continueWatchingEnabled &&
                   _continueWatching.isNotEmpty) ...<Widget>[
                 _SectionHeader(title: 'Continue Watching', accent: accent),
@@ -605,120 +533,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ],
-              if ((_settings.traktAccessToken ?? '').isNotEmpty &&
-                  _settings.traktSyncWatchlistEnabled &&
-                  _traktWatchlist.isNotEmpty) ...<Widget>[
-                _SectionHeader(
-                  title: 'From Your Trakt Watchlist',
-                  actionLabel: 'Synced',
-                  accent: accent,
-                ),
-                SliverToBoxAdapter(
-                  child: _TopTenRail(
-                    items: _traktWatchlist,
-                    settings: _settings,
-                    accent: accent,
-                    onOpen: _openMedia,
-                  ),
-                ),
-              ],
-              _SectionHeader(
-                title: 'Top 10 Movies This Week',
-                actionLabel: 'View All',
-                accent: accent,
-                onAction: _trending.isEmpty
-                    ? null
-                    : () => _openMediaList(
-                          title: 'Top 10 Movies This Week',
-                          items: _trending,
-                        ),
-              ),
-              SliverToBoxAdapter(
-                child: _loading && _trending.isEmpty
-                    ? const _PosterSkeletonRow(
-                        height: 250,
-                        itemWidth: 138,
-                        itemHeight: 204,
-                        count: 4,
-                      )
-                    : _TopTenRail(
-                        items: _trending,
-                        settings: _settings,
-                        accent: accent,
-                        onOpen: _openMedia,
-                      ),
-              ),
-              _SectionHeader(
-                title: 'Top 10 Series This Week',
-                actionLabel: 'View All',
-                accent: accent,
-                onAction: _trendingSeries.isEmpty
-                    ? null
-                    : () => _openMediaList(
-                          title: 'Top 10 Series This Week',
-                          items: _trendingSeries,
-                        ),
-              ),
-              SliverToBoxAdapter(
-                child: _loading && _trendingSeries.isEmpty
-                    ? const _PosterSkeletonRow(
-                        height: 250,
-                        itemWidth: 138,
-                        itemHeight: 204,
-                        count: 4,
-                      )
-                    : _TopTenRail(
-                        items: _trendingSeries,
-                        settings: _settings,
-                        accent: accent,
-                        onOpen: _openMedia,
-                      ),
-              ),
-              _SectionHeader(title: 'New Releases', accent: accent),
-              SliverToBoxAdapter(
-                child: _loading && _newReleases.isEmpty
-                    ? const _PosterSkeletonRow(
-                        height: 218,
-                        itemWidth: 155,
-                        itemHeight: 185,
-                        count: 4,
-                      )
-                    : SizedBox(
-                        height: _settings.posterLandscapeEnabled ? 148 : 218,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _newReleases.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(width: 14),
-                          itemBuilder: (BuildContext context, int index) {
-                            final MediaSummary item = _newReleases[index];
-                            return _NewReleaseCard(
-                              item: item,
-                              settings: _settings,
-                              onTap: () => _openMedia(item),
-                            );
-                          },
-                        ),
-                      ),
-              ),
               if (_catalogRows.isNotEmpty) ...<Widget>[
-                for (final AddonCatalogRow row in _catalogRows)
-                  ...[
-                    _SectionHeader(
-                      title: row.catalogName,
-                      accent: accent,
+                for (final AddonCatalogRow row in _catalogRows) ...[
+                  _SectionHeader(
+                    title: row.catalogName,
+                    actionLabel: row.addonName,
+                    accent: accent,
+                  ),
+                  SliverToBoxAdapter(
+                    child: _CatalogRail(
+                      items: row.items,
+                      addon: row.addon,
+                      addonsService: widget.addonsService,
+                      settings: _settings,
+                      onOpen: (AddonCatalogItem item) => _openCatalogItem(item),
                     ),
-                    SliverToBoxAdapter(
-                      child: _CatalogRail(
-                        items: row.items,
-                        addon: row.addon,
-                        addonsService: widget.addonsService,
-                        onOpen: (AddonCatalogItem item) =>
-                            _openCatalogItem(item),
-                      ),
-                    ),
-                  ],
+                  ),
+                ],
               ],
               const SliverToBoxAdapter(child: SizedBox(height: 92)),
             ],
@@ -829,52 +660,6 @@ class _SquareHeaderButton extends StatelessWidget {
   }
 }
 
-class _PosterSkeletonRow extends StatelessWidget {
-  const _PosterSkeletonRow({
-    required this.height,
-    required this.itemWidth,
-    required this.itemHeight,
-    required this.count,
-  });
-
-  final double height;
-  final double itemWidth;
-  final double itemHeight;
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-        scrollDirection: Axis.horizontal,
-        itemCount: count,
-        separatorBuilder: (_, __) => const SizedBox(width: 14),
-        itemBuilder: (BuildContext context, int index) {
-          return SizedBox(
-            width: itemWidth,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                _SkeletonBlock(
-                  height: itemHeight,
-                  borderRadius: 16,
-                ),
-                const SizedBox(height: 10),
-                const _SkeletonBlock(
-                  height: 12,
-                  borderRadius: 999,
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
 class _SkeletonBlock extends StatelessWidget {
   const _SkeletonBlock({
     required this.height,
@@ -919,22 +704,130 @@ class _HeroSkeleton extends StatelessWidget {
   }
 }
 
-class _HomeHeroCarousel extends StatelessWidget {
-  const _HomeHeroCarousel({
+class _AddonHomeEmptyState extends StatelessWidget {
+  const _AddonHomeEmptyState({
+    required this.hasInstalledAddons,
+    required this.hasEnabledCatalogAddon,
+    required this.accent,
+    required this.onOpenAddons,
+  });
+
+  final bool hasInstalledAddons;
+  final bool hasEnabledCatalogAddon;
+  final Color accent;
+  final VoidCallback onOpenAddons;
+
+  @override
+  Widget build(BuildContext context) {
+    final String title = !hasInstalledAddons
+        ? 'Add your first catalog addon'
+        : hasEnabledCatalogAddon
+            ? 'No catalog posters yet'
+            : 'Enable a catalog addon';
+    final String body = !hasInstalledAddons
+        ? 'Install AIOStreams, Cinemeta, MediaFusion, or another Stremio addon with catalogs. Home stays clean until addons provide posters.'
+        : hasEnabledCatalogAddon
+            ? 'Your enabled addons did not return catalog items yet. Refresh them or add a metadata/catalog addon.'
+            : 'Installed addons exist, but none with catalogs are enabled. Turn one on to build your Home shelves.';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[
+              accent.withOpacity(0.16),
+              AppColors.cardBackground,
+              Colors.white.withOpacity(0.03),
+            ],
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: accent.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Icon(Icons.grid_view_rounded, color: accent, size: 28),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              title,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 28,
+                height: 1.0,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.7,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              body,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 14,
+                height: 1.45,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 22),
+            FilledButton.icon(
+              onPressed: onOpenAddons,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.text,
+                foregroundColor: AppColors.background,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              icon: const Icon(Icons.extension_rounded, size: 18),
+              label: const Text(
+                'Manage addons',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddonHeroCarousel extends StatelessWidget {
+  const _AddonHeroCarousel({
     required this.controller,
     required this.items,
+    required this.addon,
     required this.activeIndex,
     required this.accent,
+    required this.addonsService,
     required this.onPageChanged,
     required this.onOpen,
   });
 
   final PageController controller;
-  final List<MediaSummary> items;
+  final List<AddonCatalogItem> items;
+  final AddonManifest addon;
   final int activeIndex;
   final Color accent;
+  final StremioAddonsService addonsService;
   final ValueChanged<int> onPageChanged;
-  final ValueChanged<MediaSummary> onOpen;
+  final ValueChanged<AddonCatalogItem> onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -943,7 +836,7 @@ class _HomeHeroCarousel extends StatelessWidget {
     }
 
     return SizedBox(
-      height: 460,
+      height: 438,
       child: Stack(
         children: <Widget>[
           PageView.builder(
@@ -951,12 +844,14 @@ class _HomeHeroCarousel extends StatelessWidget {
             itemCount: items.length,
             onPageChanged: onPageChanged,
             itemBuilder: (BuildContext context, int index) {
-              final MediaSummary item = items[index];
+              final AddonCatalogItem item = items[index];
               return Padding(
                 padding: const EdgeInsets.fromLTRB(16, 2, 16, 28),
-                child: _HeroPanel(
+                child: _AddonHeroPanel(
                   item: item,
+                  addon: addon,
                   accent: accent,
+                  addonsService: addonsService,
                   onTap: () => onOpen(item),
                 ),
               );
@@ -991,20 +886,27 @@ class _HomeHeroCarousel extends StatelessWidget {
   }
 }
 
-class _HeroPanel extends StatelessWidget {
-  const _HeroPanel({
+class _AddonHeroPanel extends StatelessWidget {
+  const _AddonHeroPanel({
     required this.item,
+    required this.addon,
     required this.accent,
+    required this.addonsService,
     required this.onTap,
   });
 
-  final MediaSummary item;
+  final AddonCatalogItem item;
+  final AddonManifest addon;
   final Color accent;
+  final StremioAddonsService addonsService;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final String? imagePath = item.backdropPath ?? item.posterPath;
+    final String imageUrl = addonsService.resolveAddonUrl(
+      addon,
+      item.background ?? item.poster,
+    );
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -1021,11 +923,11 @@ class _HeroPanel extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          if (imagePath == null)
+          if (imageUrl.isEmpty)
             const ColoredBox(color: AppColors.cardBackground)
           else
             Image.network(
-              getImageUrl(imagePath, 'w780'),
+              imageUrl,
               fit: BoxFit.cover,
               errorBuilder: (
                 BuildContext context,
@@ -1041,9 +943,9 @@ class _HeroPanel extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: <Color>[
-                  Colors.black.withOpacity(0.05),
-                  Colors.black.withOpacity(0.45),
-                  Colors.black.withOpacity(0.92),
+                  Colors.black.withOpacity(0.08),
+                  Colors.black.withOpacity(0.42),
+                  Colors.black.withOpacity(0.94),
                 ],
               ),
             ),
@@ -1055,16 +957,16 @@ class _HeroPanel extends StatelessWidget {
             child: Column(
               children: <Widget>[
                 Text(
-                  item.title,
+                  item.name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: AppColors.text,
-                    fontSize: 34,
+                    fontSize: 32,
                     height: 0.98,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: -1.3,
+                    letterSpacing: -1.1,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1073,9 +975,11 @@ class _HeroPanel extends StatelessWidget {
                   spacing: 8,
                   children: <Widget>[
                     _HeroMeta(
-                        label: item.mediaType == 'tv' ? 'Series' : 'Movie'),
-                    _HeroMeta(label: _year(item.releaseDate)),
-                    const _HeroMeta(label: 'Top 10 this week'),
+                      label: item.mediaType == 'tv' ? 'Series' : 'Movie',
+                    ),
+                    if ((item.releaseInfo ?? '').isNotEmpty)
+                      _HeroMeta(label: item.releaseInfo!),
+                    _HeroMeta(label: addon.name),
                   ],
                 ),
                 const SizedBox(height: 18),
@@ -1094,7 +998,7 @@ class _HeroPanel extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    'View Details',
+                    'Open sources',
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 15,
@@ -1131,171 +1035,16 @@ class _HeroMeta extends StatelessWidget {
   }
 }
 
-class _TopTenRail extends StatelessWidget {
-  const _TopTenRail({
-    required this.items,
-    required this.settings,
-    required this.accent,
-    required this.onOpen,
-  });
-
-  final List<MediaSummary> items;
-  final AppSettings settings;
-  final Color accent;
-  final ValueChanged<MediaSummary> onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final double cardWidth = LayoutOptions.posterWidth(settings) + 18;
-    final double cardHeight = settings.posterLandscapeEnabled
-        ? (LayoutOptions.posterWidth(settings) * 0.66) + 38
-        : (LayoutOptions.posterWidth(settings) * 1.48) + 38;
-    return SizedBox(
-      height: cardHeight,
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(24, 0, 16, 8),
-        scrollDirection: Axis.horizontal,
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 14),
-        itemBuilder: (BuildContext context, int index) {
-          final MediaSummary item = items[index];
-          return _RankedPosterCard(
-            rank: index + 1,
-            item: item,
-            width: cardWidth,
-            posterWidth: LayoutOptions.posterWidth(settings),
-            radius: LayoutOptions.posterRadius(settings),
-            landscape: settings.posterLandscapeEnabled,
-            hideLabel: settings.posterHideLabels,
-            accent: accent,
-            onTap: () => onOpen(item),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _RankedPosterCard extends StatelessWidget {
-  const _RankedPosterCard({
-    required this.rank,
-    required this.item,
-    required this.width,
-    required this.posterWidth,
-    required this.radius,
-    required this.landscape,
-    required this.hideLabel,
-    required this.accent,
-    required this.onTap,
-  });
-
-  final int rank;
-  final MediaSummary item;
-  final double width;
-  final double posterWidth;
-  final double radius;
-  final bool landscape;
-  final bool hideLabel;
-  final Color accent;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final String? imagePath = landscape
-        ? (item.backdropPath ?? item.posterPath)
-        : (item.posterPath ?? item.backdropPath);
-    final double posterHeight =
-        landscape ? posterWidth * 0.66 : posterWidth * 1.48;
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: width,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: <Widget>[
-            Positioned(
-              left: 18,
-              top: 0,
-              width: posterWidth,
-              height: posterHeight,
-              child: Container(
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(radius),
-                ),
-                child: imagePath == null
-                    ? const ColoredBox(color: AppColors.cardBackground)
-                    : Image.network(
-                        getImageUrl(imagePath, landscape ? 'w780' : 'w342'),
-                        fit: BoxFit.cover,
-                        errorBuilder: (
-                          BuildContext context,
-                          Object error,
-                          StackTrace? stackTrace,
-                        ) {
-                          return const ColoredBox(
-                            color: AppColors.cardBackground,
-                          );
-                        },
-                      ),
-              ),
-            ),
-            Positioned(
-              left: 0,
-              top: posterHeight - 72,
-              child: Text(
-                rank.toString(),
-                style: TextStyle(
-                  color: accent.withOpacity(0.38),
-                  fontSize: 78,
-                  height: 0.8,
-                  fontWeight: FontWeight.w900,
-                  shadows: const <Shadow>[
-                    Shadow(color: Colors.white, blurRadius: 1.2),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              left: 28,
-              right: 8,
-              top: posterHeight - 24,
-              child: hideLabel
-                  ? const SizedBox.shrink()
-                  : Text(
-                      item.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.text,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        shadows: <Shadow>[
-                          Shadow(color: Colors.black, blurRadius: 8),
-                        ],
-                      ),
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
     required this.accent,
     this.actionLabel,
-    this.onAction,
   });
 
   final String title;
   final Color accent;
   final String? actionLabel;
-  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -1329,264 +1078,23 @@ class _SectionHeader extends StatelessWidget {
             ),
             const Spacer(),
             if (actionLabel != null)
-              Material(
-                color: Colors.white.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(999),
-                child: InkWell(
-                  onTap: onAction,
-                  borderRadius: BorderRadius.circular(999),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.white.withOpacity(0.04)),
-                    ),
-                    child: Row(
-                      children: <Widget>[
-                        Text(
-                          actionLabel!,
-                          style: TextStyle(
-                            color: onAction == null
-                                ? AppColors.textMuted
-                                : AppColors.text,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 2),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          color: onAction == null
-                              ? AppColors.textMuted
-                              : AppColors.text,
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MediaListScreen extends StatelessWidget {
-  const _MediaListScreen({
-    required this.title,
-    required this.items,
-    required this.settings,
-    required this.accent,
-    required this.onOpen,
-  });
-
-  final String title;
-  final List<MediaSummary> items;
-  final AppSettings settings;
-  final Color accent;
-  final ValueChanged<MediaSummary> onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool wide = MediaQuery.of(context).size.width >= 700;
-    return Scaffold(
-      backgroundColor: LayoutOptions.backgroundFor(settings),
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: <Widget>[
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-              sliver: SliverToBoxAdapter(
-                child: Row(
-                  children: <Widget>[
-                    IconButton(
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      color: AppColors.text,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.text,
-                          fontSize: 28,
-                          height: 1.05,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: accent.withOpacity(0.16),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '${items.length}',
-                        style: TextStyle(
-                          color: accent,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: wide ? 4 : 2,
-                  mainAxisSpacing: 16,
-                  crossAxisSpacing: 14,
-                  childAspectRatio:
-                      settings.posterLandscapeEnabled ? 1.15 : 0.68,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (BuildContext context, int index) {
-                    final MediaSummary item = items[index];
-                    return _BrowseGridCard(
-                      rank: index + 1,
-                      item: item,
-                      settings: settings,
-                      accent: accent,
-                      onTap: () => onOpen(item),
-                    );
-                  },
-                  childCount: items.length,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BrowseGridCard extends StatelessWidget {
-  const _BrowseGridCard({
-    required this.rank,
-    required this.item,
-    required this.settings,
-    required this.accent,
-    required this.onTap,
-  });
-
-  final int rank;
-  final MediaSummary item;
-  final AppSettings settings;
-  final Color accent;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final String? imagePath = settings.posterLandscapeEnabled
-        ? (item.backdropPath ?? item.posterPath)
-        : (item.posterPath ?? item.backdropPath);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(
-            LayoutOptions.posterRadius(settings),
-          ),
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            if (imagePath == null)
-              const ColoredBox(color: AppColors.cardBackground)
-            else
-              Image.network(
-                getImageUrl(
-                  imagePath,
-                  settings.posterLandscapeEnabled ? 'w780' : 'w342',
-                ),
-                fit: BoxFit.cover,
-                errorBuilder: (
-                  BuildContext context,
-                  Object error,
-                  StackTrace? stackTrace,
-                ) {
-                  return const ColoredBox(color: AppColors.cardBackground);
-                },
-              ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[
-                    Colors.black.withOpacity(0.02),
-                    Colors.black.withOpacity(0.18),
-                    Colors.black.withOpacity(0.88),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              left: 10,
-              top: 10,
-              child: Container(
-                width: 34,
-                height: 34,
-                alignment: Alignment.center,
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.92),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white.withOpacity(0.04)),
                 ),
                 child: Text(
-                  rank.toString(),
+                  actionLabel!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: AppColors.background,
-                    fontWeight: FontWeight.w900,
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                   ),
-                ),
-              ),
-            ),
-            if (!settings.posterHideLabels)
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: 12,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      item.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.text,
-                        fontSize: 14,
-                        height: 1.08,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _year(item.releaseDate),
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
                 ),
               ),
           ],
@@ -1999,102 +1507,6 @@ class _RemovePill extends StatelessWidget {
   }
 }
 
-class _NewReleaseCard extends StatelessWidget {
-  const _NewReleaseCard({
-    required this.item,
-    required this.settings,
-    required this.onTap,
-  });
-
-  final MediaSummary item;
-  final AppSettings settings;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final double width = LayoutOptions.posterWidth(settings) + 18;
-    final double height = settings.posterLandscapeEnabled ? 142 : 210;
-    final String? imagePath = settings.posterLandscapeEnabled
-        ? (item.backdropPath ?? item.posterPath)
-        : (item.posterPath ?? item.backdropPath);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: width,
-        height: height,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius:
-              BorderRadius.circular(LayoutOptions.posterRadius(settings)),
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            imagePath == null
-                ? const ColoredBox(color: AppColors.cardBackground)
-                : Image.network(
-                    getImageUrl(
-                      imagePath,
-                      settings.posterLandscapeEnabled ? 'w780' : 'w342',
-                    ),
-                    fit: BoxFit.cover,
-                    errorBuilder: (
-                      BuildContext context,
-                      Object error,
-                      StackTrace? stackTrace,
-                    ) {
-                      return const ColoredBox(color: AppColors.cardBackground);
-                    },
-                  ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[
-                    Colors.transparent,
-                    Colors.black.withOpacity(0.85),
-                  ],
-                ),
-              ),
-            ),
-            if (!settings.posterHideLabels)
-              Positioned(
-                left: 10,
-                right: 10,
-                bottom: 10,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      item.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.text,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _year(item.releaseDate),
-                      style: const TextStyle(
-                        color: AppColors.textSubtle,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 String _subtitle(WatchHistoryItem item) {
   if (item.mediaType == 'tv' &&
       item.seasonNumber != null &&
@@ -2137,24 +1549,29 @@ String _formatWatchTime(int milliseconds) {
   return '${duration.inMinutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
 }
 
-String _year(String date) => date.isEmpty ? '' : date.split('-').first;
-
 class _CatalogRail extends StatelessWidget {
   const _CatalogRail({
     required this.items,
     required this.addon,
     required this.addonsService,
+    required this.settings,
     required this.onOpen,
   });
 
   final List<AddonCatalogItem> items;
   final AddonManifest addon;
   final StremioAddonsService addonsService;
+  final AppSettings settings;
   final ValueChanged<AddonCatalogItem> onOpen;
 
   @override
   Widget build(BuildContext context) {
-    const double cardHeight = 210;
+    final double posterWidth = LayoutOptions.posterWidth(settings);
+    final double posterHeight = settings.posterLandscapeEnabled
+        ? posterWidth * 0.62
+        : posterWidth * 1.45;
+    final double cardHeight =
+        settings.posterHideLabels ? posterHeight + 12 : posterHeight + 42;
     return SizedBox(
       height: cardHeight,
       child: ListView.separated(
@@ -2168,8 +1585,14 @@ class _CatalogRail extends StatelessWidget {
             item: item,
             posterUrl: addonsService.resolveAddonUrl(
               addon,
-              item.poster,
+              settings.posterLandscapeEnabled
+                  ? (item.background ?? item.poster)
+                  : item.poster,
             ),
+            width: posterWidth,
+            height: posterHeight,
+            radius: LayoutOptions.posterRadius(settings),
+            hideLabel: settings.posterHideLabels,
             onTap: () => onOpen(item),
           );
         },
@@ -2182,11 +1605,19 @@ class _CatalogPosterCard extends StatelessWidget {
   const _CatalogPosterCard({
     required this.item,
     required this.posterUrl,
+    required this.width,
+    required this.height,
+    required this.radius,
+    required this.hideLabel,
     required this.onTap,
   });
 
   final AddonCatalogItem item;
   final String posterUrl;
+  final double width;
+  final double height;
+  final double radius;
+  final bool hideLabel;
   final VoidCallback onTap;
 
   @override
@@ -2194,17 +1625,17 @@ class _CatalogPosterCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(
-        width: 130,
+        width: width,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Container(
-              width: 130,
-              height: 185,
+              width: width,
+              height: height,
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: AppColors.cardBackground,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(radius),
               ),
               child: posterUrl.isEmpty
                   ? const ColoredBox(color: AppColors.cardBackground)
@@ -2222,17 +1653,19 @@ class _CatalogPosterCard extends StatelessWidget {
                       },
                     ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              item.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+            if (!hideLabel) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(
+                item.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

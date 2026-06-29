@@ -91,7 +91,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _initialized = false;
   bool _showControls = true;
   bool _subtitlesVisible = true;
-  bool _landscapeLocked = false;
+  bool _landscapeLocked = true;
   String? _error;
   String? _externalSubtitleName;
   _PlaybackIssue? _playbackIssue;
@@ -111,11 +111,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(_enterLandscapeMode());
     unawaited(WakelockPlus.enable());
     _files = widget.initialFiles;
     _resolvedUrl = widget.initialVideoUrl;
     _activeFileId = widget.initialFileId;
     _load();
+  }
+
+  Future<void> _enterLandscapeMode() async {
+    await SystemChrome.setPreferredOrientations(
+      const <DeviceOrientation>[
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ],
+    );
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (!mounted) {
+      return;
+    }
+    if (!_landscapeLocked) {
+      setState(() {
+        _landscapeLocked = true;
+      });
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -919,25 +938,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _toggleOrientation() async {
-    final bool nextLandscape = !_landscapeLocked;
-    if (nextLandscape) {
-      await SystemChrome.setPreferredOrientations(
-        const <DeviceOrientation>[
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ],
-      );
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    } else {
-      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    }
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _landscapeLocked = nextLandscape;
-    });
+    await _enterLandscapeMode();
+    _showFeatureMessage('The player stays locked to landscape while open.');
   }
 
   Future<void> _selectAudioTrack(int trackIndex) async {
