@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:fvp/fvp.dart' as fvp;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -78,7 +77,6 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   static const MethodChannel _externalPlayerChannel =
       MethodChannel('streamed/external_player');
-  static bool _playerBackendRegistered = false;
 
   VideoPlayerController? _controller;
   List<TorBoxTorrentFile> _files = const <TorBoxTorrentFile>[];
@@ -103,7 +101,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   int _lastPersistedSecond = -1;
   AppSettings _settings = const AppSettings();
   bool _settingsLoaded = false;
-  bool _preferredTracksApplied = false;
   bool _externalOpenedAutomatically = false;
   bool _autoNextStarted = false;
   bool _traktStarted = false;
@@ -378,7 +375,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     VideoPlayerController? nextController;
     try {
-      _ensurePlayerBackendRegistered();
       final VideoPlayerController? previousController = _controller;
       setState(() {
         _controller = null;
@@ -389,7 +385,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _position = Duration.zero;
         _duration = Duration.zero;
       });
-      _preferredTracksApplied = false;
       _autoNextStarted = false;
 
       _progressTimer?.cancel();
@@ -455,25 +450,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _error = _friendlyError(error);
         _playbackIssue = _describePlaybackIssue(error);
       });
-    }
-  }
-
-  void _ensurePlayerBackendRegistered() {
-    if (_playerBackendRegistered) {
-      return;
-    }
-    try {
-      fvp.registerWith(
-        options: <String, Object>{
-          'fastSeek': true,
-          'lowLatency': 1,
-          'video.decoders': <String>['auto'],
-        },
-      );
-      _playerBackendRegistered = true;
-    } catch (_) {
-      // Fall back to the default video_player backend if fvp cannot register.
-      _playerBackendRegistered = true;
     }
   }
 
@@ -883,79 +859,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _refreshMediaTracks() async {
-    final VideoPlayerController? controller = _controller;
-    if (controller == null || !_initialized) {
+    if (_controller == null || !_initialized) {
       return;
     }
-
-    try {
-      final dynamic mediaInfo = controller.getMediaInfo();
-      final List<dynamic> audio =
-          mediaInfo?.audio is List ? List<dynamic>.from(mediaInfo.audio) : [];
-      final List<dynamic> subtitles = mediaInfo?.subtitle is List
-          ? List<dynamic>.from(mediaInfo.subtitle)
-          : [];
-      final List<int> activeAudio =
-          controller.getActiveAudioTracks() ?? const <int>[];
-      final List<int> activeSubtitles =
-          controller.getActiveSubtitleTracks() ?? const <int>[];
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _audioTracks = audio;
-        _subtitleTracks = subtitles;
-        _activeAudioTracks = activeAudio;
-        _activeSubtitleTracks = activeSubtitles;
-      });
-      if (!_preferredTracksApplied) {
-        _preferredTracksApplied = true;
-        unawaited(_applyPreferredTracks());
-      }
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _audioTracks = const <dynamic>[];
-        _subtitleTracks = const <dynamic>[];
-        _activeAudioTracks = const <int>[];
-        _activeSubtitleTracks = const <int>[];
-      });
+    if (!mounted) {
+      return;
     }
-  }
-
-  Future<void> _applyPreferredTracks() async {
-    final String audioLanguage = _settings.playbackPreferredAudioLanguage;
-    final String subtitleLanguage = _settings.playbackPreferredSubtitleLanguage;
-    final String secondarySubtitleLanguage =
-        _settings.playbackSecondarySubtitleLanguage;
-
-    final int? audioIndex = _findTrackByLanguage(_audioTracks, audioLanguage);
-    if (audioIndex != null) {
-      await _selectAudioTrack(audioIndex);
-    }
-
-    final int? subtitleIndex =
-        _findTrackByLanguage(_subtitleTracks, subtitleLanguage) ??
-            _findTrackByLanguage(_subtitleTracks, secondarySubtitleLanguage);
-    if (subtitleIndex != null) {
-      await _selectSubtitleTrack(subtitleIndex);
-    }
-  }
-
-  int? _findTrackByLanguage(List<dynamic> tracks, String language) {
-    final String query = language.trim().toLowerCase();
-    if (query.isEmpty) {
-      return null;
-    }
-    for (int index = 0; index < tracks.length; index += 1) {
-      final String haystack = tracks[index].toString().toLowerCase();
-      if (haystack.contains(query)) {
-        return index;
-      }
-    }
-    return null;
+    setState(() {
+      _audioTracks = const <dynamic>[];
+      _subtitleTracks = const <dynamic>[];
+      _activeAudioTracks = const <int>[];
+      _activeSubtitleTracks = const <int>[];
+    });
   }
 
   Future<void> _toggleOrientation() async {
@@ -964,18 +879,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _selectAudioTrack(int trackIndex) async {
-    final VideoPlayerController? controller = _controller;
-    if (controller == null) {
-      return;
-    }
-    try {
-      controller.setAudioTracks(<int>[trackIndex]);
-      await _refreshMediaTracks();
-    } catch (_) {
-      _showFeatureMessage(
-        'This player backend could not switch audio tracks for this file.',
-      );
-    }
+    _showFeatureMessage(
+      'Embedded audio track switching needs the native player backend.',
+    );
   }
 
   Future<void> _selectSubtitleTrack(int? trackIndex) async {
@@ -985,17 +891,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
     try {
       if (trackIndex == null) {
-        controller.setSubtitleTracks(const <int>[]);
         await controller.setClosedCaptionFile(null);
         setState(() {
           _subtitlesVisible = false;
           _externalSubtitleName = null;
         });
       } else {
-        controller.setSubtitleTracks(<int>[trackIndex]);
-        setState(() {
-          _subtitlesVisible = true;
-        });
+        _showFeatureMessage(
+          'Embedded subtitles need the native player backend. Use external .srt or .vtt subtitles for now.',
+        );
       }
       await _refreshMediaTracks();
     } catch (_) {
@@ -1022,7 +926,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     try {
-      controller.setExternalSubtitle(path);
       final String lower = pickedFile!.name.toLowerCase();
       if (lower.endsWith('.srt') || lower.endsWith('.vtt')) {
         final String raw = await File(path).readAsString();
@@ -1033,7 +936,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           captions,
         ));
       } else {
-        await controller.setClosedCaptionFile(null);
+        _showFeatureMessage(
+          'Only .srt and .vtt subtitles are supported by this player backend.',
+        );
+        return;
       }
       if (!mounted) {
         return;
