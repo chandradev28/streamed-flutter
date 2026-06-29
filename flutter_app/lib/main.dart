@@ -17,12 +17,17 @@ class MyHttpOverrides extends HttpOverrides {
 void main() {
   HttpOverrides.global = MyHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
-  fvp.registerWith(
-    options: <String, Object>{
-      'fastSeek': true,
-      'lowLatency': 1,
-      'video.decoders': <String>['auto'],
-    },
-  );
+  try {
+    fvp.registerWith(
+      options: <String, Object>{
+        'fastSeek': true,
+        'lowLatency': 1,
+        'video.decoders': <String>['auto'],
+      },
+    );
+  } catch (_) {
+    // Some Android devices can fail native player registration at startup.
+    // Keep the app usable and let external playback remain available.
+  }
   runApp(const StreamedApp());
 }

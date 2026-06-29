@@ -73,31 +73,66 @@ class _HomeScreenState extends State<HomeScreen> {
       _loading = true;
     });
 
-    final List<dynamic> results = await Future.wait<dynamic>(<Future<dynamic>>[
-      widget.settingsRepository.loadSettings(),
-      _loadOrKeep<WatchHistoryItem>(
-        _continueWatching,
-        () => widget.watchHistoryRepository.getContinueWatching(20),
-      ),
-      widget.addonsService.getInstalledAddons(),
-      widget.addonsService.fetchAllCatalogRows(),
-    ]);
+    try {
+      final List<dynamic> results =
+          await Future.wait<dynamic>(<Future<dynamic>>[
+        _loadSettingsOrKeep(),
+        _loadOrKeep<WatchHistoryItem>(
+          _continueWatching,
+          () => widget.watchHistoryRepository.getContinueWatching(20),
+        ),
+        _loadInstalledAddonsOrKeep(),
+        _loadCatalogRowsOrKeep(),
+      ]);
 
-    if (!mounted) {
-      return;
+      if (!mounted) {
+        return;
+      }
+
+      final AppSettings settings = results[0] as AppSettings;
+      setState(() {
+        _settings = settings;
+        _continueWatching = _sortContinueWatching(
+          results[1] as List<WatchHistoryItem>,
+          settings,
+        );
+        _installedAddons = results[2] as List<AddonManifest>;
+        _catalogRows = results[3] as List<AddonCatalogRow>;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loading = false;
+        _catalogRows = const <AddonCatalogRow>[];
+      });
     }
+  }
 
-    final AppSettings settings = results[0] as AppSettings;
-    setState(() {
-      _settings = settings;
-      _continueWatching = _sortContinueWatching(
-        results[1] as List<WatchHistoryItem>,
-        settings,
-      );
-      _installedAddons = results[2] as List<AddonManifest>;
-      _catalogRows = results[3] as List<AddonCatalogRow>;
-      _loading = false;
-    });
+  Future<AppSettings> _loadSettingsOrKeep() async {
+    try {
+      return await widget.settingsRepository.loadSettings();
+    } catch (_) {
+      return _settings;
+    }
+  }
+
+  Future<List<AddonManifest>> _loadInstalledAddonsOrKeep() async {
+    try {
+      return await widget.addonsService.getInstalledAddons();
+    } catch (_) {
+      return _installedAddons;
+    }
+  }
+
+  Future<List<AddonCatalogRow>> _loadCatalogRowsOrKeep() async {
+    try {
+      return await widget.addonsService.fetchAllCatalogRows();
+    } catch (_) {
+      return _catalogRows;
+    }
   }
 
   Future<List<T>> _loadOrKeep<T>(
