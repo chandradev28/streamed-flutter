@@ -10,6 +10,8 @@ abstract class MediaCatalogService {
   Future<List<MediaSummary>> getTrendingSeries();
   Future<List<MediaSummary>> getNowPlayingMovies();
   Future<MediaDetail> getMediaDetail(int id, String mediaType);
+  Future<MediaDetail?> findMediaByExternalId(
+      String externalId, String mediaType);
   Future<List<EpisodeItem>> getSeasonEpisodes(int tvId, int seasonNumber);
 }
 
@@ -135,7 +137,40 @@ class TmdbMediaService implements MediaCatalogService {
       trailers: enrich && settings.tmdbTrailersEnabled
           ? _readTrailersFromDynamic(detail['videos'])
           : const <MediaTrailer>[],
+      director: enrich && settings.tmdbCreditsEnabled
+          ? _readDirectorFromDynamic(detail, detail['credits'], mediaType)
+          : null,
     );
+  }
+
+  @override
+  Future<MediaDetail?> findMediaByExternalId(
+    String externalId,
+    String mediaType,
+  ) async {
+    final String trimmed = externalId.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final AppSettings settings = await _settingsRepository.loadSettings();
+    final Map<String, dynamic> payload = await _fetch(
+      '/3/find/$trimmed',
+      <String, String>{'external_source': 'imdb_id'},
+      settings,
+    );
+
+    final String resultKey = mediaType == 'tv' ? 'tv_results' : 'movie_results';
+    final List<dynamic> results =
+        payload[resultKey] as List<dynamic>? ?? const <dynamic>[];
+    final List<Map<String, dynamic>> matches =
+        results.whereType<Map<String, dynamic>>().toList(growable: false);
+    final Map<String, dynamic>? first = matches.isEmpty ? null : matches.first;
+    final int? id = (first?['id'] as num?)?.toInt();
+    if (id == null) {
+      return null;
+    }
+    return getMediaDetail(id, mediaType);
   }
 
   @override
@@ -280,5 +315,38 @@ class TmdbMediaService implements MediaCatalogService {
         .map(MediaTrailer.fromJson)
         .where((MediaTrailer trailer) => trailer.url != null)
         .toList(growable: false);
+  }
+
+  String? _readDirectorFromDynamic(
+    Map<String, dynamic> detail,
+    dynamic creditsPayload,
+    String mediaType,
+  ) {
+    if (mediaType == 'tv') {
+      final List<dynamic> createdBy =
+          detail['created_by'] as List<dynamic>? ?? const <dynamic>[];
+      final List<String> creators = createdBy
+          .whereType<Map<String, dynamic>>()
+          .map((Map<String, dynamic> item) => item['name']?.toString() ?? '')
+          .where((String name) => name.trim().isNotEmpty)
+          .take(2)
+          .toList(growable: false);
+      return creators.isEmpty ? null : creators.join(', ');
+    }
+
+    if (creditsPayload is! Map<String, dynamic>) {
+      return null;
+    }
+    final List<dynamic> crew =
+        creditsPayload['crew'] as List<dynamic>? ?? const <dynamic>[];
+    final List<String> directors = crew
+        .whereType<Map<String, dynamic>>()
+        .where((Map<String, dynamic> item) =>
+            (item['job']?.toString().toLowerCase() ?? '') == 'director')
+        .map((Map<String, dynamic> item) => item['name']?.toString() ?? '')
+        .where((String name) => name.trim().isNotEmpty)
+        .take(2)
+        .toList(growable: false);
+    return directors.isEmpty ? null : directors.join(', ');
   }
 }

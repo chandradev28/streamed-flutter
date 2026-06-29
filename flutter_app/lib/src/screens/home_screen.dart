@@ -152,21 +152,36 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openCatalogItem(AddonCatalogItem item) {
+  Future<void> _openCatalogItem(AddonCatalogItem item) async {
     final String imdbId = item.id.startsWith('tt') ? item.id : '';
 
     if (imdbId.isNotEmpty) {
-      Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (BuildContext context) => StreamedSourcesScreen(
-            title: item.name,
-            posterPath: null,
-            mediaType: item.mediaType,
-            imdbId: imdbId,
-            tmdbId: int.tryParse(
-                RegExp(r'^tmdb:(\d+)').firstMatch(item.id)?.group(1) ?? ''),
-          ),
-        ),
+      try {
+        final MediaDetail? detail = await widget.mediaService
+            .findMediaByExternalId(imdbId, item.mediaType);
+        if (!mounted) {
+          return;
+        }
+        if (detail != null) {
+          Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (BuildContext context) => MovieDetailScreen(
+                id: detail.id,
+                mediaType: detail.mediaType,
+                mediaService: widget.mediaService,
+              ),
+            ),
+          );
+          return;
+        }
+      } catch (_) {
+        if (!mounted) {
+          return;
+        }
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load this title info yet.')),
       );
       return;
     }
@@ -181,6 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
             builder: (BuildContext context) => MovieDetailScreen(
               id: tmdbId,
               mediaType: item.mediaType,
+              mediaService: widget.mediaService,
             ),
           ),
         );

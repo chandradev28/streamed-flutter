@@ -4,8 +4,10 @@ import '../models/torbox_models.dart';
 import '../services/app_settings_repository.dart';
 import '../services/episode_parser.dart';
 import '../services/real_debrid_api_service.dart';
+import '../services/stream_badge_service.dart';
 import '../services/stream_catalog_service.dart';
 import '../services/stremio_addons_service.dart';
+import '../services/tmdb_image.dart';
 import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
 import 'video_player_screen.dart';
@@ -26,11 +28,13 @@ class StreamedSourcesScreen extends StatefulWidget {
     TorBoxApiService? torBoxApiService,
     RealDebridApiService? realDebridApiService,
     AppSettingsRepository? settingsRepository,
+    StreamBadgeService? streamBadgeService,
   })  : streamCatalogService = streamCatalogService ?? StreamCatalogService(),
         addonsService = addonsService ?? StremioAddonsService(),
         torBoxApiService = torBoxApiService ?? TorBoxApiService(),
         realDebridApiService = realDebridApiService ?? RealDebridApiService(),
-        settingsRepository = settingsRepository ?? AppSettingsRepository();
+        settingsRepository = settingsRepository ?? AppSettingsRepository(),
+        streamBadgeService = streamBadgeService ?? const StreamBadgeService();
 
   final String title;
   final String? posterPath;
@@ -45,6 +49,7 @@ class StreamedSourcesScreen extends StatefulWidget {
   final TorBoxApiService torBoxApiService;
   final RealDebridApiService realDebridApiService;
   final AppSettingsRepository settingsRepository;
+  final StreamBadgeService streamBadgeService;
 
   @override
   State<StreamedSourcesScreen> createState() => _StreamedSourcesScreenState();
@@ -52,14 +57,12 @@ class StreamedSourcesScreen extends StatefulWidget {
 
 class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
   AppSettings _settings = const AppSettings();
-  List<AddonManifest> _addons = const <AddonManifest>[];
   List<StreamSource> _results = const <StreamSource>[];
   bool _loading = true;
   String? _message;
   String? _selectedSource;
   bool _cachedOnly = false;
-  Map<String, int> _sourceCounts = const <String, int>{};
-  Map<String, String> _sourceErrors = const <String, String>{};
+  List<StreamBadge> _badges = const <StreamBadge>[];
 
   bool get _isEpisodeContext =>
       widget.mediaType == 'tv' &&
@@ -112,14 +115,14 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
 
   Future<void> _bootstrap() async {
     final AppSettings settings = await widget.settingsRepository.loadSettings();
-    final List<AddonManifest> addons =
-        await widget.addonsService.getInstalledAddons();
     if (!mounted) {
       return;
     }
     setState(() {
       _settings = settings;
-      _addons = addons;
+      _badges = settings.streamBadgesEnabled
+          ? widget.streamBadgeService.parseBadges(settings.streamBadgesJson)
+          : const <StreamBadge>[];
     });
     await _search();
   }
@@ -132,17 +135,10 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
 
     final List<StreamSource> merged = <StreamSource>[];
     final Set<String> seen = <String>{};
-    final Map<String, int> sourceCounts = <String, int>{};
-    final Map<String, String> sourceErrors = <String, String>{};
 
     try {
       final List<AddonManifest> addons =
           await widget.addonsService.getInstalledAddons();
-      if (mounted) {
-        setState(() {
-          _addons = addons;
-        });
-      }
 
       final bool hasEnabledStreamAddon = addons.any(
         (AddonManifest addon) => addon.enabled && addon.hasStreamResource,
@@ -160,8 +156,6 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
           mediaType: widget.mediaType,
           streamId: streamId,
         );
-        sourceCounts.addAll(addonSearch.diagnostics.sourceCounts);
-        sourceErrors.addAll(addonSearch.diagnostics.sourceErrors);
         final List<StreamSource> addonStreams =
             await widget.streamCatalogService.annotateCacheStatus(
           addonSearch.streams,
@@ -193,10 +187,11 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
 
     setState(() {
       _results = merged;
+      _badges = _settings.streamBadgesEnabled
+          ? widget.streamBadgeService.parseBadges(_settings.streamBadgesJson)
+          : const <StreamBadge>[];
       _selectedSource = null;
       _cachedOnly = false;
-      _sourceCounts = sourceCounts;
-      _sourceErrors = sourceErrors;
       _loading = false;
       _message = merged.isEmpty
           ? (_message ?? 'No sources came back for this title.')
@@ -438,155 +433,358 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
   Widget build(BuildContext context) {
     final int cachedCount =
         _results.where((StreamSource source) => source.isCached).length;
+    final List<String> sourceTabs = _availableSources;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Sources'),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _search,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: <Widget>[
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: AppColors.cardBackground,
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    widget.episodeName ?? widget.title,
-                    style: const TextStyle(
-                      color: AppColors.text,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
+      backgroundColor: const Color(0xFF050505),
+      body: Stack(
+        children: <Widget>[
+          Positioned.fill(
+            child: _SourcesBackdrop(posterPath: widget.posterPath),
+          ),
+          RefreshIndicator(
+            onRefresh: _search,
+            color: AppColors.text,
+            backgroundColor: AppColors.cardBackground,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: <Widget>[
+                SliverToBoxAdapter(
+                  child: _SourcesHero(
+                    title: widget.title,
+                    subtitle: _isEpisodeContext
+                        ? 'S${widget.seasonNumber}E${widget.episodeNumber}'
+                        : widget.mediaType == 'tv'
+                            ? 'Show sources'
+                            : 'Movie sources',
+                    loading: _loading,
+                    cachedOnly: _cachedOnly,
+                    cachedCount: cachedCount,
+                    totalCount: _results.length,
+                    onBack: () => Navigator.of(context).maybePop(),
+                    onRefresh: _loading ? null : _search,
+                    onToggleCached: () {
+                      setState(() {
+                        _cachedOnly = !_cachedOnly;
+                      });
+                    },
                   ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: <Widget>[
-                      _StreamedHeaderChip(
-                        label:
-                            '${_addons.where((AddonManifest addon) => addon.enabled && addon.hasStreamResource).length} enabled addons',
-                      ),
-                      if (_isEpisodeContext)
-                        _StreamedHeaderChip(
-                          label:
-                              'S${widget.seasonNumber}E${widget.episodeNumber}',
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  FilledButton(
-                    onPressed: _loading ? null : _search,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.text,
-                      foregroundColor: AppColors.background,
-                    ),
-                    child: Text(_loading ? 'Searching...' : 'Refresh sources'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            if (_sourceCounts.isNotEmpty ||
-                _sourceErrors.isNotEmpty) ...<Widget>[
-              _DiagnosticsCard(
-                counts: _sourceCounts,
-                errors: _sourceErrors,
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (_availableSources.isNotEmpty) ...<Widget>[
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: <Widget>[
-                    _SourceFilterChip(
-                      label: 'All (${_results.length})',
-                      selected: _selectedSource == null && !_cachedOnly,
-                      onTap: () {
+                ),
+                if (sourceTabs.isNotEmpty)
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _SourceTabsHeader(
+                      selectedSource: _selectedSource,
+                      sourceNames: sourceTabs,
+                      onSelected: (String? sourceName) {
                         setState(() {
-                          _selectedSource = null;
-                          _cachedOnly = false;
+                          _selectedSource = sourceName;
                         });
                       },
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: _SourceFilterChip(
-                        label: 'Cached only ($cachedCount)',
-                        selected: _cachedOnly,
-                        onTap: () {
-                          setState(() {
-                            _cachedOnly = !_cachedOnly;
-                          });
-                        },
+                  ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate(
+                      <Widget>[
+                        if (_loading)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 56),
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: AppColors.text,
+                              ),
+                            ),
+                          )
+                        else if (_results.isEmpty)
+                          _EmptyState(message: _message)
+                        else if (_visibleResults.isEmpty)
+                          _EmptyState(
+                            message: _cachedOnly
+                                ? 'No cached streams match the current filter.'
+                                : _message,
+                          )
+                        else
+                          ..._visibleGroupNames.map(
+                            (String sourceName) => _SourceResultGroup(
+                              sourceName: sourceName,
+                              sources: _visibleResults
+                                  .where(
+                                    (StreamSource source) =>
+                                        source.sourceDisplayName == sourceName,
+                                  )
+                                  .toList(growable: false),
+                              isEpisodeContext: _isEpisodeContext,
+                              isSeasonPackSource: _isSeasonPackSource,
+                              badges: _badges,
+                              badgeService: widget.streamBadgeService,
+                              onPlay: _playSource,
+                              onAddToTorBox: _addToTorBox,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SourcesBackdrop extends StatelessWidget {
+  const _SourcesBackdrop({this.posterPath});
+
+  final String? posterPath;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? path = posterPath;
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        if (path == null || path.isEmpty)
+          const ColoredBox(color: Color(0xFF050505))
+        else
+          Image.network(
+            _sourceImageUrl(path, 'original'),
+            fit: BoxFit.cover,
+            errorBuilder: (
+              BuildContext context,
+              Object error,
+              StackTrace? stackTrace,
+            ) {
+              return const ColoredBox(color: Color(0xFF050505));
+            },
+          ),
+        ColoredBox(color: Colors.black.withOpacity(0.34)),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: <Color>[
+                Colors.black.withOpacity(0.20),
+                Colors.black.withOpacity(0.72),
+                const Color(0xFF050505),
+              ],
+              stops: const <double>[0, 0.34, 1],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SourcesHero extends StatelessWidget {
+  const _SourcesHero({
+    required this.title,
+    required this.subtitle,
+    required this.loading,
+    required this.cachedOnly,
+    required this.cachedCount,
+    required this.totalCount,
+    required this.onBack,
+    required this.onRefresh,
+    required this.onToggleCached,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool loading;
+  final bool cachedOnly;
+  final int cachedCount;
+  final int totalCount;
+  final VoidCallback onBack;
+  final VoidCallback? onRefresh;
+  final VoidCallback onToggleCached;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                _TopIconButton(
+                  icon: Icons.arrow_back_rounded,
+                  onTap: onBack,
+                ),
+                const Spacer(),
+                _TopIconButton(
+                  icon: Icons.refresh_rounded,
+                  onTap: onRefresh,
+                ),
+              ],
+            ),
+            const SizedBox(height: 26),
+            Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 38,
+                height: 0.95,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -1.5,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              loading
+                  ? 'Searching addons...'
+                  : '$subtitle - $totalCount source${totalCount == 1 ? '' : 's'}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: <Widget>[
+                GestureDetector(
+                  onTap: onToggleCached,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 11,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cachedOnly
+                          ? AppColors.text
+                          : Colors.white.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                    ),
+                    child: Text(
+                      'Cached only $cachedCount',
+                      style: TextStyle(
+                        color:
+                            cachedOnly ? AppColors.background : AppColors.text,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                    ..._availableSources.map(
-                      (String sourceName) => Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: _SourceFilterChip(
-                          label:
-                              '$sourceName (${_results.where((StreamSource item) => item.sourceDisplayName == sourceName).length})',
-                          selected: _selectedSource == sourceName,
-                          onTap: () {
-                            setState(() {
-                              _selectedSource = _selectedSource == sourceName
-                                  ? null
-                                  : sourceName;
-                            });
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 48),
-                child: Center(
-                  child: CircularProgressIndicator(color: AppColors.text),
-                ),
-              )
-            else if (_results.isEmpty)
-              _EmptyState(message: _message)
-            else if (_visibleResults.isEmpty)
-              _EmptyState(
-                message: _cachedOnly
-                    ? 'No cached streams match the current filter.'
-                    : _message,
-              )
-            else
-              ..._visibleGroupNames.map(
-                (String sourceName) => _SourceResultGroup(
-                  sourceName: sourceName,
-                  sources: _visibleResults
-                      .where(
-                        (StreamSource source) =>
-                            source.sourceDisplayName == sourceName,
-                      )
-                      .toList(growable: false),
-                  isEpisodeContext: _isEpisodeContext,
-                  isSeasonPackSource: _isSeasonPackSource,
-                  onPlay: _playSource,
-                  onAddToTorBox: _addToTorBox,
-                ),
-              ),
+                const SizedBox(width: 10),
+                if (onRefresh != null)
+                  TextButton(
+                    onPressed: onRefresh,
+                    child: const Text('Refresh'),
+                  ),
+              ],
+            ),
           ],
         ),
       ),
     );
+  }
+}
+
+class _TopIconButton extends StatelessWidget {
+  const _TopIconButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.black.withOpacity(0.34),
+          border: Border.all(color: Colors.white.withOpacity(0.10)),
+        ),
+        child: Icon(
+          icon,
+          color: onTap == null ? AppColors.textSubtle : AppColors.text,
+          size: 24,
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceTabsHeader extends SliverPersistentHeaderDelegate {
+  _SourceTabsHeader({
+    required this.selectedSource,
+    required this.sourceNames,
+    required this.onSelected,
+  });
+
+  final String? selectedSource;
+  final List<String> sourceNames;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  double get minExtent => 66;
+
+  @override
+  double get maxExtent => 66;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.78),
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withOpacity(0.05)),
+        ),
+      ),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+        children: <Widget>[
+          _SourceFilterChip(
+            label: 'All',
+            selected: selectedSource == null,
+            onTap: () => onSelected(null),
+          ),
+          ...sourceNames.map(
+            (String sourceName) => Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: _SourceFilterChip(
+                label: sourceName,
+                selected: selectedSource == sourceName,
+                onTap: () => onSelected(sourceName),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _SourceTabsHeader oldDelegate) {
+    return oldDelegate.selectedSource != selectedSource ||
+        oldDelegate.sourceNames != sourceNames;
   }
 }
 
@@ -596,6 +794,8 @@ class _SourceResultGroup extends StatelessWidget {
     required this.sources,
     required this.isEpisodeContext,
     required this.isSeasonPackSource,
+    required this.badges,
+    required this.badgeService,
     required this.onPlay,
     required this.onAddToTorBox,
   });
@@ -604,6 +804,8 @@ class _SourceResultGroup extends StatelessWidget {
   final List<StreamSource> sources;
   final bool isEpisodeContext;
   final bool Function(StreamSource source) isSeasonPackSource;
+  final List<StreamBadge> badges;
+  final StreamBadgeService badgeService;
   final ValueChanged<StreamSource> onPlay;
   final ValueChanged<StreamSource> onAddToTorBox;
 
@@ -617,22 +819,22 @@ class _SourceResultGroup extends StatelessWidget {
         .toList(growable: false);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.only(bottom: 26),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          _SectionHeader(
-            title: sourceName,
-            subtitle:
-                '${sources.length} result${sources.length == 1 ? '' : 's'} from this addon.',
-          ),
-          const SizedBox(height: 10),
+          _SectionHeader(title: sourceName),
+          const SizedBox(height: 14),
           if (!isEpisodeContext)
             ...sources.map(
               (StreamSource source) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _StreamedSourceCard(
                   source: source,
+                  badges: badgeService.matchesForSource(
+                    badges: badges,
+                    source: source,
+                  ),
                   onPlay: () => onPlay(source),
                   onAddToTorBox: () => onAddToTorBox(source),
                 ),
@@ -646,6 +848,10 @@ class _SourceResultGroup extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _StreamedSourceCard(
                     source: source,
+                    badges: badgeService.matchesForSource(
+                      badges: badges,
+                      source: source,
+                    ),
                     onPlay: () => onPlay(source),
                     onAddToTorBox: () => onAddToTorBox(source),
                   ),
@@ -660,6 +866,10 @@ class _SourceResultGroup extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _StreamedSourceCard(
                     source: source,
+                    badges: badgeService.matchesForSource(
+                      badges: badges,
+                      source: source,
+                    ),
                     onPlay: () => onPlay(source),
                     onAddToTorBox: () => onAddToTorBox(source),
                   ),
@@ -698,11 +908,13 @@ class _SmallGroupLabel extends StatelessWidget {
 class _StreamedSourceCard extends StatelessWidget {
   const _StreamedSourceCard({
     required this.source,
+    required this.badges,
     required this.onPlay,
     required this.onAddToTorBox,
   });
 
   final StreamSource source;
+  final List<StreamBadge> badges;
   final VoidCallback onPlay;
   final VoidCallback onAddToTorBox;
 
@@ -715,70 +927,217 @@ class _StreamedSourceCard extends StatelessWidget {
         if (source.fileName != null) source.fileName!,
       ].join('\n'),
     );
+    final String releaseLine = _releaseLine(source);
+    final String featureLine = _featureLine(source);
+    final String fileLine = _fileLine(source);
+    final String sizeLine = _sizeLine(source);
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(20),
+    return Material(
+      color: Colors.white.withOpacity(0.075),
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: onPlay,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withOpacity(0.20),
+                blurRadius: 22,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      '⚡ ${source.quality.isEmpty ? 'Source' : source.quality}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onPlay,
+                    icon: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: AppColors.text,
+                      size: 28,
+                    ),
+                  ),
+                ],
+              ),
+              if (releaseLine.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 2),
+                Text(
+                  '「$releaseLine」',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              if (featureLine.isNotEmpty)
+                _SourceInfoLine(icon: '📼', text: featureLine),
+              if (sizeLine.isNotEmpty)
+                _SourceInfoLine(icon: '📦', text: sizeLine),
+              _SourceInfoLine(icon: '🔧', text: source.sourceDisplayName),
+              if (seasonPack)
+                const _SourceInfoLine(icon: '📁', text: 'Season pack'),
+              if (source.isDirectUrl)
+                const _SourceInfoLine(icon: '🔗', text: 'Direct URL'),
+              if (fileLine.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    '✏️ $fileLine',
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 14,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              if (!source.isDirectUrl) ...<Widget>[
+                const SizedBox(height: 14),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: onAddToTorBox,
+                    icon: const Icon(Icons.add_link_rounded, size: 18),
+                    label: const Text('Add to TorBox'),
+                  ),
+                ),
+              ],
+              if (badges.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 12),
+                _StreamBadgeWrap(badges: badges),
+              ],
+            ],
+          ),
+        ),
       ),
-      child: Column(
+    );
+  }
+}
+
+class _SourceInfoLine extends StatelessWidget {
+  const _SourceInfoLine({
+    required this.icon,
+    required this.text,
+  });
+
+  final String icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            source.title,
-            style: const TextStyle(
-              color: AppColors.text,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              _StreamedHeaderChip(label: source.sourceDisplayName),
-              _StreamedHeaderChip(label: source.quality),
-              if (source.sizeLabel.isNotEmpty)
-                _StreamedHeaderChip(label: source.sizeLabel),
-              if (source.cacheProvider != null)
-                _StreamedHeaderChip(label: source.cacheProvider!)
-              else if (source.isCached)
-                const _StreamedHeaderChip(label: 'Cached'),
-              if (seasonPack) const _StreamedHeaderChip(label: 'Season pack'),
-              if (source.isDirectUrl)
-                const _StreamedHeaderChip(label: 'Direct URL'),
-            ],
-          ),
-          if (source.description.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 10),
-            Text(
-              source.description,
-              style: const TextStyle(color: AppColors.textMuted, height: 1.45),
-            ),
-          ],
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              FilledButton(
-                onPressed: onPlay,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.text,
-                  foregroundColor: AppColors.background,
-                ),
-                child: const Text('Play now'),
+          Text(icon, style: const TextStyle(fontSize: 15)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 14,
+                height: 1.25,
+                fontWeight: FontWeight.w600,
               ),
-              if (!source.isDirectUrl)
-                FilledButton.tonal(
-                  onPressed: onAddToTorBox,
-                  child: const Text('Add to TorBox'),
-                ),
-            ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StreamBadgeWrap extends StatelessWidget {
+  const _StreamBadgeWrap({required this.badges});
+
+  final List<StreamBadge> badges;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 9,
+      runSpacing: 8,
+      children: badges.map((StreamBadge badge) {
+        final String? imageUrl = badge.imageUrl;
+        if (imageUrl != null && imageUrl.isNotEmpty) {
+          return ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 104, maxHeight: 30),
+            child: Image.network(
+              imageUrl,
+              height: 24,
+              fit: BoxFit.contain,
+              errorBuilder: (
+                BuildContext context,
+                Object error,
+                StackTrace? stackTrace,
+              ) {
+                return _TextBadge(badge: badge);
+              },
+            ),
+          );
+        }
+        return _TextBadge(badge: badge);
+      }).toList(growable: false),
+    );
+  }
+}
+
+class _TextBadge extends StatelessWidget {
+  const _TextBadge({required this.badge});
+
+  final StreamBadge badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color:
+            _parseBadgeColor(badge.tagColor) ?? Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(
+          color: _parseBadgeColor(badge.borderColor) ??
+              Colors.white.withOpacity(0.10),
+        ),
+      ),
+      child: Text(
+        badge.name,
+        style: TextStyle(
+          color: _parseBadgeColor(badge.textColor) ?? AppColors.text,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }
@@ -787,105 +1146,19 @@ class _StreamedSourceCard extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
-    required this.subtitle,
   });
 
   final String title;
-  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          title,
-          style: const TextStyle(
-            color: AppColors.text,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          subtitle,
-          style: const TextStyle(
-            color: AppColors.textMuted,
-            height: 1.45,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DiagnosticsCard extends StatelessWidget {
-  const _DiagnosticsCard({
-    required this.counts,
-    required this.errors,
-  });
-
-  final Map<String, int> counts;
-  final Map<String, String> errors;
-
-  @override
-  Widget build(BuildContext context) {
-    final List<String> keys = <String>{...counts.keys, ...errors.keys}.toList()
-      ..sort();
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const Text(
-            'Source diagnostics',
-            style: TextStyle(
-              color: AppColors.text,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          ...keys.map(
-            (String key) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Expanded(
-                    child: Text(
-                      key,
-                      style: const TextStyle(color: AppColors.text),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    counts[key]?.toString() ?? '0',
-                    style: const TextStyle(color: AppColors.textMuted),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (errors.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 6),
-            ...errors.entries.map(
-              (MapEntry<String, String> entry) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  '${entry.key}: ${entry.value}',
-                  style: const TextStyle(
-                    color: Color(0xFFFCA5A5),
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
+    return Text(
+      title,
+      style: const TextStyle(
+        color: AppColors.text,
+        fontSize: 21,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -0.4,
       ),
     );
   }
@@ -920,31 +1193,6 @@ class _SourceFilterChip extends StatelessWidget {
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StreamedHeaderChip extends StatelessWidget {
-  const _StreamedHeaderChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.text,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -987,4 +1235,99 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+String _sourceImageUrl(String path, String size) {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  return getImageUrl(path, size);
+}
+
+String _releaseLine(StreamSource source) {
+  final String text = '${source.title}\n${source.description}';
+  final RegExpMatch? match = RegExp(
+    r'(WEB[- ]?DL|WEBRip|BluRay|BRRip|HDRip|DVDRip|HDTV|Remux)',
+    caseSensitive: false,
+  ).firstMatch(text);
+  return match?.group(0)?.toUpperCase().replaceAll(' ', '-') ?? '';
+}
+
+String _featureLine(StreamSource source) {
+  final String text = '${source.title} ${source.description}'.toLowerCase();
+  final List<String> parts = <String>[];
+
+  if (text.contains('x265') ||
+      text.contains('h.265') ||
+      text.contains('hevc')) {
+    parts.add('HEVC');
+  } else if (text.contains('x264') ||
+      text.contains('h.264') ||
+      text.contains('avc')) {
+    parts.add('H.264');
+  }
+  if (text.contains('hdr10+')) {
+    parts.add('HDR10+');
+  } else if (text.contains('hdr10')) {
+    parts.add('HDR10');
+  } else if (RegExp(r'\bhdr\b').hasMatch(text)) {
+    parts.add('HDR');
+  }
+  if (text.contains(' dolby vision') || RegExp(r'\bdv\b').hasMatch(text)) {
+    parts.add('DV');
+  }
+  if (text.contains('atmos')) {
+    parts.add('Atmos');
+  }
+  if (text.contains('ddp') || text.contains('dd+')) {
+    parts.add('DD+');
+  }
+  if (text.contains('5.1')) {
+    parts.add('5.1');
+  }
+  if (text.contains('7.1')) {
+    parts.add('7.1');
+  }
+
+  return parts.isEmpty
+      ? source.description.split('\n').first.trim()
+      : parts.join(' · ');
+}
+
+String _sizeLine(StreamSource source) {
+  final List<String> parts = <String>[
+    if (source.sizeLabel.trim().isNotEmpty) source.sizeLabel.trim(),
+    if ((source.cacheProvider ?? '').trim().isNotEmpty)
+      source.cacheProvider!.trim(),
+  ];
+  return parts.join(' · ');
+}
+
+String _fileLine(StreamSource source) {
+  final String? fileName = source.fileName;
+  if (fileName != null && fileName.trim().isNotEmpty) {
+    return fileName.trim();
+  }
+  if (source.title.trim().isNotEmpty) {
+    return source.title.trim();
+  }
+  return source.description.trim();
+}
+
+Color? _parseBadgeColor(String? raw) {
+  final String value = (raw ?? '').trim();
+  if (value.isEmpty ||
+      value == '#00000000' ||
+      value.toLowerCase() == 'transparent') {
+    return null;
+  }
+  final String hex = value.replaceFirst('#', '');
+  if (hex.length != 6 && hex.length != 8) {
+    return null;
+  }
+  final int? parsed = int.tryParse(hex, radix: 16);
+  if (parsed == null) {
+    return null;
+  }
+  return Color(hex.length == 6 ? 0xFF000000 | parsed : parsed);
 }

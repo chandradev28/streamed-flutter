@@ -73,6 +73,8 @@ class AppSettings {
     this.playbackAutoPlayNextEpisode = false,
     this.playbackBingeGroupNextEpisode = true,
     this.playbackNextEpisodeThreshold = 90,
+    this.streamBadgesEnabled = false,
+    this.streamBadgesJson = '',
   });
 
   final String? torBoxApiKey;
@@ -148,6 +150,8 @@ class AppSettings {
   final bool playbackAutoPlayNextEpisode;
   final bool playbackBingeGroupNextEpisode;
   final int playbackNextEpisodeThreshold;
+  final bool streamBadgesEnabled;
+  final String streamBadgesJson;
 
   AppSettings copyWith({
     String? torBoxApiKey,
@@ -229,6 +233,8 @@ class AppSettings {
     bool? playbackAutoPlayNextEpisode,
     bool? playbackBingeGroupNextEpisode,
     int? playbackNextEpisodeThreshold,
+    bool? streamBadgesEnabled,
+    String? streamBadgesJson,
   }) {
     return AppSettings(
       torBoxApiKey: clearApiKey ? null : (torBoxApiKey ?? this.torBoxApiKey),
@@ -353,6 +359,8 @@ class AppSettings {
           playbackBingeGroupNextEpisode ?? this.playbackBingeGroupNextEpisode,
       playbackNextEpisodeThreshold:
           playbackNextEpisodeThreshold ?? this.playbackNextEpisodeThreshold,
+      streamBadgesEnabled: streamBadgesEnabled ?? this.streamBadgesEnabled,
+      streamBadgesJson: streamBadgesJson ?? this.streamBadgesJson,
     );
   }
 
@@ -456,6 +464,8 @@ class AppSettings {
           json['playbackBingeGroupNextEpisode'] as bool? ?? true,
       playbackNextEpisodeThreshold:
           (json['playbackNextEpisodeThreshold'] as num?)?.toInt() ?? 90,
+      streamBadgesEnabled: json['streamBadgesEnabled'] as bool? ?? false,
+      streamBadgesJson: json['streamBadgesJson'] as String? ?? '',
     );
   }
 
@@ -535,6 +545,8 @@ class AppSettings {
       'playbackAutoPlayNextEpisode': playbackAutoPlayNextEpisode,
       'playbackBingeGroupNextEpisode': playbackBingeGroupNextEpisode,
       'playbackNextEpisodeThreshold': playbackNextEpisodeThreshold,
+      'streamBadgesEnabled': streamBadgesEnabled,
+      'streamBadgesJson': streamBadgesJson,
     };
   }
 }

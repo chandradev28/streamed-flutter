@@ -103,6 +103,14 @@ class FakeMediaService implements MediaCatalogService {
   }
 
   @override
+  Future<MediaDetail?> findMediaByExternalId(
+    String externalId,
+    String mediaType,
+  ) async {
+    return getMediaDetail(99, mediaType);
+  }
+
+  @override
   Future<List<MediaSummary>> getNowPlayingMovies() async => nowPlaying;
 
   @override

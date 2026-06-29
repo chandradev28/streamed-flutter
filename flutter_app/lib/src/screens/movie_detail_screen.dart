@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../models/favorite_item.dart';
 import '../models/tmdb_media_models.dart';
 import '../services/favorites_repository.dart';
@@ -36,17 +37,39 @@ class MovieDetailScreen extends StatefulWidget {
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
   static const int _initialRetryCount = 3;
 
+  final ScrollController _scrollController = ScrollController();
+
   MediaDetail? _detail;
   List<ExternalRating> _externalRatings = const <ExternalRating>[];
   bool _loading = true;
   bool _showFullDescription = false;
   bool _isFavorited = false;
+  bool _showPinnedTitle = false;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
     _loadDetail();
     _loadFavoriteState();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_handleScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleScroll() {
+    final bool shouldShow = _scrollController.hasClients &&
+        _scrollController.offset > MediaQuery.of(context).size.height * 0.34;
+    if (shouldShow == _showPinnedTitle) {
+      return;
+    }
+    setState(() {
+      _showPinnedTitle = shouldShow;
+    });
   }
 
   Future<void> _loadDetail({int retryCount = _initialRetryCount}) async {
@@ -70,7 +93,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       _loadExternalRatings(detail);
     } catch (_) {
       if (retryCount > 0) {
-        // Exponential backoff: 400ms, 800ms, 1200ms
         final int delayMs = 400 * (_initialRetryCount - retryCount + 1);
         await Future<void>.delayed(Duration(milliseconds: delayMs));
         if (!mounted) {
@@ -168,7 +190,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-              'This title is missing an IMDb ID, so Torboxers cannot search it yet.'),
+            'This title is missing an IMDb ID, so sources cannot search it yet.',
+          ),
         ),
       );
       return;
@@ -227,6 +250,68 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
   }
 
+  void _openMoreSheet() {
+    final MediaDetail? detail = _detail;
+    if (detail == null) {
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return SafeArea(
+          top: false,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                _SheetAction(
+                  icon: _isFavorited
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  label: _isFavorited ? 'Remove from saved' : 'Add to saved',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _toggleFavorite();
+                  },
+                ),
+                _SheetAction(
+                  icon: Icons.link_rounded,
+                  label: 'Open magnet/import tools',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (BuildContext context) => MagnetScreen(),
+                      ),
+                    );
+                  },
+                ),
+                if (detail.trailers.isNotEmpty)
+                  _SheetAction(
+                    icon: Icons.smart_display_rounded,
+                    label: 'Play trailer',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _openTrailer(detail.trailers.first);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -266,330 +351,352 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
 
     final bool isMovie = detail.mediaType == 'movie';
-    final String genres =
-        detail.genres.take(2).map((GenreItem item) => item.name).join(', ');
+    final double screenHeight = MediaQuery.of(context).size.height;
+    final double heroHeight = (screenHeight * 0.66).clamp(460.0, 610.0);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF050505),
       body: Stack(
         children: <Widget>[
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            child: SizedBox(
-              height: MediaQuery.of(context).size.height * 0.55,
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  (detail.backdropPath ?? detail.posterPath) == null
-                      ? const ColoredBox(color: AppColors.background)
-                      : Image.network(
-                          getImageUrl(
-                            detail.backdropPath ?? detail.posterPath,
-                            'original',
-                          ),
-                          fit: BoxFit.cover,
-                          errorBuilder: (
-                            BuildContext context,
-                            Object error,
-                            StackTrace? stackTrace,
-                          ) {
-                            return const ColoredBox(
-                                color: AppColors.background);
-                          },
-                        ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: <Color>[
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.4),
-                          const Color(0xF20A0A0A),
-                        ],
+          CustomScrollView(
+            controller: _scrollController,
+            slivers: <Widget>[
+              SliverToBoxAdapter(
+                child: _HeroPanel(
+                  detail: detail,
+                  height: heroHeight,
+                  isFavorited: _isFavorited,
+                  onPlay: _showPlaybackTools,
+                  onMore: _openMoreSheet,
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 36),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate(
+                    <Widget>[
+                      _OverviewBlock(
+                        detail: detail,
+                        externalRatings: _externalRatings,
+                        isExpanded: _showFullDescription,
+                        onToggle: () {
+                          setState(() {
+                            _showFullDescription = !_showFullDescription;
+                          });
+                        },
                       ),
-                    ),
+                      if (detail.cast.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 28),
+                        const _SectionTitle(title: 'Cast'),
+                        const SizedBox(height: 14),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          clipBehavior: Clip.none,
+                          child: Row(
+                            children: detail.cast
+                                .map(
+                                  (CastItem member) => Padding(
+                                    padding: const EdgeInsets.only(right: 18),
+                                    child: _CastCard(member: member),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        ),
+                      ],
+                      if (detail.trailers.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 28),
+                        const Row(
+                          children: <Widget>[
+                            _SectionTitle(title: 'Trailers'),
+                            SizedBox(width: 16),
+                            _TrailerFilterChip(),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          clipBehavior: Clip.none,
+                          child: Row(
+                            children: detail.trailers
+                                .map(
+                                  (MediaTrailer trailer) => Padding(
+                                    padding: const EdgeInsets.only(right: 14),
+                                    child: _TrailerCard(
+                                      trailer: trailer,
+                                      onTap: () => _openTrailer(trailer),
+                                    ),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 28),
+                      _SectionTitle(
+                        title: isMovie ? 'Movie Details' : 'Show Details',
+                      ),
+                      const SizedBox(height: 12),
+                      _DetailsTable(detail: detail),
+                      if (!isMovie &&
+                          detail.seasons.any(
+                            (SeasonSummary season) => season.seasonNumber > 0,
+                          )) ...<Widget>[
+                        const SizedBox(height: 30),
+                        const _SectionTitle(title: 'Seasons'),
+                        const SizedBox(height: 14),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          clipBehavior: Clip.none,
+                          child: Row(
+                            children: detail.seasons
+                                .where(
+                                  (SeasonSummary season) =>
+                                      season.seasonNumber > 0,
+                                )
+                                .map(
+                                  (SeasonSummary season) => Padding(
+                                    padding: const EdgeInsets.only(right: 14),
+                                    child: _SeasonCard(
+                                      season: season,
+                                      fallbackPosterPath: detail.posterPath,
+                                      onTap: () => _openSeason(season),
+                                    ),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        ),
+                      ],
+                      if (detail.similarItems.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 30),
+                        _SectionTitle(
+                          title: 'Related ${isMovie ? 'movies' : 'shows'}',
+                        ),
+                        const SizedBox(height: 14),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          clipBehavior: Clip.none,
+                          child: Row(
+                            children: detail.similarItems
+                                .map(
+                                  (MediaSummary item) => Padding(
+                                    padding: const EdgeInsets.only(right: 14),
+                                    child: _RelatedCard(
+                                      item: item,
+                                      onTap: () => _openRelated(item),
+                                    ),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                    ],
                   ),
+                ),
+              ),
+            ],
+          ),
+          _PinnedToolbar(
+            title: detail.title,
+            showTitle: _showPinnedTitle,
+            isFavorited: _isFavorited,
+            onBack: () => Navigator.of(context).maybePop(),
+            onFavorite: _toggleFavorite,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PinnedToolbar extends StatelessWidget {
+  const _PinnedToolbar({
+    required this.title,
+    required this.showTitle,
+    required this.isFavorited,
+    required this.onBack,
+    required this.onFavorite,
+  });
+
+  final String title;
+  final bool showTitle;
+  final bool isFavorited;
+  final VoidCallback onBack;
+  final VoidCallback onFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+        decoration: BoxDecoration(
+          color:
+              showTitle ? Colors.black.withOpacity(0.74) : Colors.transparent,
+          border: Border(
+            bottom: BorderSide(
+              color: showTitle
+                  ? Colors.white.withOpacity(0.06)
+                  : Colors.transparent,
+            ),
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            _CircleActionButton(
+              icon: Icons.arrow_back_rounded,
+              onTap: onBack,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: showTitle ? 1 : 0,
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            _CircleActionButton(
+              icon: isFavorited ? Icons.check_rounded : Icons.add_rounded,
+              onTap: onFavorite,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroPanel extends StatelessWidget {
+  const _HeroPanel({
+    required this.detail,
+    required this.height,
+    required this.isFavorited,
+    required this.onPlay,
+    required this.onMore,
+  });
+
+  final MediaDetail detail;
+  final double height;
+  final bool isFavorited;
+  final VoidCallback onPlay;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? imagePath = detail.backdropPath ?? detail.posterPath;
+    final String genreLine =
+        detail.genres.take(2).map((GenreItem item) => item.name).join(' - ');
+
+    return SizedBox(
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          if (imagePath == null)
+            const ColoredBox(color: AppColors.cardBackground)
+          else
+            Image.network(
+              getImageUrl(imagePath, 'original'),
+              fit: BoxFit.cover,
+              errorBuilder: (
+                BuildContext context,
+                Object error,
+                StackTrace? stackTrace,
+              ) {
+                return const ColoredBox(color: AppColors.cardBackground);
+              },
+            ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[
+                  Colors.black.withOpacity(0.10),
+                  Colors.black.withOpacity(0.18),
+                  Colors.black.withOpacity(0.64),
+                  const Color(0xFF050505),
                 ],
+                stops: const <double>[0, 0.36, 0.76, 1],
               ),
             ),
           ),
-          SafeArea(
-            child: CustomScrollView(
-              slivers: <Widget>[
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        _CircleActionButton(
-                          icon: Icons.chevron_left,
-                          onTap: () => Navigator.of(context).maybePop(),
-                        ),
-                        Column(
-                          children: <Widget>[
-                            const SizedBox(height: 2),
-                            _CircleActionButton(
-                              icon: _isFavorited
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              iconColor: _isFavorited
-                                  ? AppColors.accent
-                                  : AppColors.text,
-                              onTap: _toggleFavorite,
-                            ),
-                            const SizedBox(height: 10),
-                            _CircleActionButton(
-                              icon: Icons.download_outlined,
-                              onTap: () {
-                                Navigator.of(context).push<void>(
-                                  MaterialPageRoute<void>(
-                                    builder: (BuildContext context) =>
-                                        MagnetScreen(),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+          Positioned(
+            left: 18,
+            right: 18,
+            bottom: 28,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                Text(
+                  detail.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontSize: 34,
+                    height: 0.95,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1.3,
                   ),
                 ),
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.27,
+                const SizedBox(height: 14),
+                if (genreLine.isNotEmpty)
+                  Text(
+                    genreLine,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
+                const SizedBox(height: 18),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.text,
+                          foregroundColor: AppColors.background,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        onPressed: onPlay,
+                        icon: const Icon(Icons.play_arrow_rounded, size: 24),
+                        label: const Text(
+                          'Play',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _RoundMoreButton(onTap: onMore),
+                  ],
                 ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(28),
-                        color: Colors.white.withOpacity(0.08),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.08),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              detail.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.text,
-                                fontSize: 26,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              genres.isEmpty ? 'Drama' : genres,
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 14,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _RatingsRow(
-                              score: detail.voteAverage,
-                              votes: detail.voteCount,
-                              externalRatings: _externalRatings,
-                            ),
-                            if (detail.trailers.isNotEmpty) ...<Widget>[
-                              const SizedBox(height: 12),
-                              OutlinedButton.icon(
-                                onPressed: () =>
-                                    _openTrailer(detail.trailers.first),
-                                icon: const Icon(Icons.play_circle_outline),
-                                label: Text(
-                                  detail.trailers.first.name.isEmpty
-                                      ? 'Watch trailer'
-                                      : detail.trailers.first.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 14),
-                            Wrap(
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: <Widget>[
-                                _MetaText(text: _year(detail.releaseDate)),
-                                const _Dot(),
-                                _MetaText(text: '${detail.runtimeMinutes} min'),
-                                if (!isMovie &&
-                                    detail.numberOfSeasons > 0) ...<Widget>[
-                                  const _Dot(),
-                                  _MetaText(
-                                    text: '${detail.numberOfSeasons} Seasons',
-                                  ),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            Text(
-                              detail.overview.isEmpty
-                                  ? 'No description available.'
-                                  : detail.overview,
-                              maxLines: _showFullDescription ? null : 3,
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 14,
-                                height: 1.5,
-                              ),
-                            ),
-                            if (detail.overview.length > 100)
-                              TextButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _showFullDescription =
-                                        !_showFullDescription;
-                                  });
-                                },
-                                child: Text(
-                                  _showFullDescription ? 'less' : 'more',
-                                  style: const TextStyle(
-                                    color: Color(0xFFF5C518),
-                                  ),
-                                ),
-                              ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: AppColors.text,
-                                  foregroundColor: AppColors.background,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                ),
-                                onPressed: _showPlaybackTools,
-                                child: const Text(
-                                  'Watch now',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                if (!isMovie &&
-                    detail.seasons
-                        .any((SeasonSummary season) => season.seasonNumber > 0))
-                  SliverToBoxAdapter(
-                    child: _HorizontalSection(
-                      title: 'Seasons',
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          children: detail.seasons
-                              .where((SeasonSummary season) =>
-                                  season.seasonNumber > 0)
-                              .map(
-                                (SeasonSummary season) => Padding(
-                                  padding: const EdgeInsets.only(right: 14),
-                                  child: _SeasonCard(
-                                    season: season,
-                                    fallbackPosterPath: detail.posterPath,
-                                    onTap: () => _openSeason(season),
-                                  ),
-                                ),
-                              )
-                              .toList(growable: false),
-                        ),
-                      ),
-                    ),
-                  ),
-                if (detail.similarItems.isNotEmpty)
-                  SliverToBoxAdapter(
-                    child: _HorizontalSection(
-                      title: 'Related ${isMovie ? 'movies' : 'shows'}',
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          children: detail.similarItems
-                              .map(
-                                (MediaSummary item) => Padding(
-                                  padding: const EdgeInsets.only(right: 12),
-                                  child: _PosterTile(
-                                    imagePath: item.posterPath,
-                                    width: 140,
-                                    height: 200,
-                                    borderRadius: 14,
-                                    onTap: () => _openRelated(item),
-                                  ),
-                                ),
-                              )
-                              .toList(growable: false),
-                        ),
-                      ),
-                    ),
-                  ),
-                if (detail.cast.isNotEmpty)
-                  SliverToBoxAdapter(
-                    child: _HorizontalSection(
-                      title: 'Top cast',
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          children: detail.cast
-                              .map(
-                                (CastItem member) => Padding(
-                                  padding: const EdgeInsets.only(right: 16),
-                                  child: _CastCard(member: member),
-                                ),
-                              )
-                              .toList(growable: false),
-                        ),
-                      ),
-                    ),
-                  ),
-                if (detail.productionCompanies.isNotEmpty ||
-                    detail.networks.isNotEmpty)
-                  SliverToBoxAdapter(
-                    child: _HorizontalSection(
-                      title: 'Studios & networks',
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          children: <Widget>[
-                            ...detail.productionCompanies.map(
-                              (ProductionCompanyItem company) => Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: _TextChip(label: company.name),
-                              ),
-                            ),
-                            ...detail.networks.map(
-                              (NetworkItem network) => Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: _TextChip(label: network.name),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                const SliverToBoxAdapter(child: SizedBox(height: 40)),
               ],
             ),
           ),
@@ -599,225 +706,459 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 }
 
+class _OverviewBlock extends StatelessWidget {
+  const _OverviewBlock({
+    required this.detail,
+    required this.externalRatings,
+    required this.isExpanded,
+    required this.onToggle,
+  });
+
+  final MediaDetail detail;
+  final List<ExternalRating> externalRatings;
+  final bool isExpanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> facts = <String>[
+      _year(detail.releaseDate),
+      if (detail.runtimeMinutes > 0) _formatRuntime(detail.runtimeMinutes),
+      if (detail.mediaType == 'tv' && detail.numberOfSeasons > 0)
+        '${detail.numberOfSeasons} seasons',
+    ].where((String item) => item.isNotEmpty).toList(growable: false);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: <Widget>[
+            ...facts.map(
+              (String item) => Text(
+                item,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            if (detail.voteAverage > 0)
+              _CompactRating(score: detail.voteAverage),
+            ...externalRatings.take(2).map(
+                  (ExternalRating rating) => _SmallBadge(label: rating.score),
+                ),
+          ],
+        ),
+        if ((detail.director ?? '').isNotEmpty) ...<Widget>[
+          const SizedBox(height: 14),
+          Text.rich(
+            TextSpan(
+              children: <InlineSpan>[
+                TextSpan(
+                  text: detail.mediaType == 'tv' ? 'Creator: ' : 'Director: ',
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                TextSpan(text: detail.director),
+              ],
+            ),
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 14,
+              height: 1.35,
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Text(
+          detail.overview.isEmpty
+              ? 'No description available.'
+              : detail.overview,
+          maxLines: isExpanded ? null : 4,
+          overflow: isExpanded ? null : TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 15,
+            height: 1.48,
+          ),
+        ),
+        if (detail.overview.length > 130)
+          GestureDetector(
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                isExpanded ? 'Show Less' : 'Show More',
+                style: const TextStyle(
+                  color: AppColors.textSubtle,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _CompactRating extends StatelessWidget {
+  const _CompactRating({required this.score});
+
+  final double score;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(Icons.star_rounded, color: Color(0xFFFFC83D), size: 17),
+          const SizedBox(width: 4),
+          Text(
+            score.toStringAsFixed(1),
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SmallBadge extends StatelessWidget {
+  const _SmallBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.text,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _TrailerFilterChip extends StatelessWidget {
+  const _TrailerFilterChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          'Trailer',
+          style: TextStyle(
+            color: AppColors.text,
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        SizedBox(width: 4),
+        Icon(Icons.keyboard_arrow_down_rounded,
+            color: AppColors.text, size: 19),
+      ],
+    );
+  }
+}
+
+class _TrailerCard extends StatelessWidget {
+  const _TrailerCard({
+    required this.trailer,
+    required this.onTap,
+  });
+
+  final MediaTrailer trailer;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? thumbnail = trailer.thumbnailUrl;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 230,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Container(
+              height: 132,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  if (thumbnail == null)
+                    const ColoredBox(color: AppColors.cardBackground)
+                  else
+                    Image.network(
+                      thumbnail,
+                      fit: BoxFit.cover,
+                      errorBuilder: (
+                        BuildContext context,
+                        Object error,
+                        StackTrace? stackTrace,
+                      ) {
+                        return const ColoredBox(
+                            color: AppColors.cardBackground);
+                      },
+                    ),
+                  Center(
+                    child: Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withOpacity(0.58),
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: AppColors.text,
+                        size: 30,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 9),
+            Text(
+              trailer.name.isEmpty ? 'Trailer' : trailer.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailsTable extends StatelessWidget {
+  const _DetailsTable({required this.detail});
+
+  final MediaDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<_DetailPair> rows = <_DetailPair>[
+      _DetailPair(
+        detail.mediaType == 'movie' ? 'Release Info' : 'First Air Date',
+        _year(detail.releaseDate),
+      ),
+      _DetailPair('Runtime', _formatRuntime(detail.runtimeMinutes)),
+      _DetailPair('Origin Country', detail.country ?? ''),
+      _DetailPair('Language', (detail.originalLanguage ?? '').toUpperCase()),
+      _DetailPair('Status', detail.status ?? ''),
+    ].where((_DetailPair row) => row.value.trim().isNotEmpty).toList();
+
+    return Column(
+      children: rows
+          .map(
+            (_DetailPair row) => _DetailRow(
+              label: row.label,
+              value: row.value,
+              isLast: row == rows.last,
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+}
+
+class _DetailPair {
+  const _DetailPair(this.label, this.value);
+
+  final String label;
+  final String value;
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.label,
+    required this.value,
+    required this.isLast,
+  });
+
+  final String label;
+  final String value;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 17),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: isLast ? Colors.transparent : Colors.white.withOpacity(0.08),
+          ),
+        ),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: AppColors.text,
+        fontSize: 24,
+        height: 1.0,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -0.5,
+      ),
+    );
+  }
+}
+
 class _CircleActionButton extends StatelessWidget {
   const _CircleActionButton({
     required this.icon,
     required this.onTap,
-    this.iconColor = AppColors.text,
   });
 
   final IconData icon;
   final VoidCallback onTap;
-  final Color iconColor;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 40,
-        height: 40,
+        width: 42,
+        height: 42,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.white.withOpacity(0.15),
-          border: Border.all(color: Colors.white.withOpacity(0.2)),
+          color: Colors.black.withOpacity(0.34),
+          border: Border.all(color: Colors.white.withOpacity(0.12)),
         ),
-        child: Icon(icon, color: iconColor, size: 22),
+        child: Icon(icon, color: AppColors.text, size: 24),
       ),
     );
   }
 }
 
-class _RatingsRow extends StatelessWidget {
-  const _RatingsRow({
-    required this.score,
-    required this.votes,
-    required this.externalRatings,
-  });
+class _RoundMoreButton extends StatelessWidget {
+  const _RoundMoreButton({required this.onTap});
 
-  final double score;
-  final int votes;
-  final List<ExternalRating> externalRatings;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: <Widget>[
-        _RatingChip(
-          label: 'TMDB',
-          score: score.toStringAsFixed(1),
-          votes: votes,
-          icon: Icons.star,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 54,
+        height: 54,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withOpacity(0.12),
         ),
-        ...externalRatings.map(
-          (ExternalRating rating) => _RatingChip(
-            label: rating.label,
-            score: rating.score,
-            votes: rating.votes,
-            icon: Icons.add_chart_rounded,
-          ),
+        child: const Icon(
+          Icons.more_horiz_rounded,
+          color: AppColors.text,
+          size: 26,
         ),
-      ],
+      ),
     );
   }
 }
 
-class _RatingChip extends StatelessWidget {
-  const _RatingChip({
-    required this.label,
-    required this.score,
+class _SheetAction extends StatelessWidget {
+  const _SheetAction({
     required this.icon,
-    this.votes,
+    required this.label,
+    required this.onTap,
   });
 
-  final String label;
-  final String score;
   final IconData icon;
-  final int? votes;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icon, size: 16, color: const Color(0xFFF5C518)),
-          const SizedBox(width: 8),
-          Text(
-            score,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: AppColors.text,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              if (votes != null && votes! > 0)
-                Text(
-                  '$votes votes',
-                  style: const TextStyle(
-                    fontSize: 9,
-                    color: AppColors.textSubtle,
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TextChip extends StatelessWidget {
-  const _TextChip({required this.label});
-
   final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 180),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-      ),
-      child: Text(
+    return ListTile(
+      onTap: onTap,
+      leading: Icon(icon, color: AppColors.text),
+      title: Text(
         label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
         style: const TextStyle(
           color: AppColors.text,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
         ),
-      ),
-    );
-  }
-}
-
-class _MetaText extends StatelessWidget {
-  const _MetaText({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: AppColors.textMuted,
-        fontSize: 13,
-      ),
-    );
-  }
-}
-
-class _Dot extends StatelessWidget {
-  const _Dot();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8),
-      child: Text(
-        '•',
-        style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-      ),
-    );
-  }
-}
-
-class _HorizontalSection extends StatelessWidget {
-  const _HorizontalSection({
-    required this.title,
-    required this.child,
-  });
-
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 28, bottom: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          child,
-        ],
       ),
     );
   }
@@ -836,43 +1177,56 @@ class _SeasonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String? imagePath = season.posterPath ?? fallbackPosterPath;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 160,
-        height: 100,
+        width: 178,
+        height: 106,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           color: AppColors.cardBackground,
         ),
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            (season.posterPath ?? fallbackPosterPath) == null
-                ? const ColoredBox(color: AppColors.cardBackground)
-                : Image.network(
-                    getImageUrl(
-                        season.posterPath ?? fallbackPosterPath, 'w185'),
-                    fit: BoxFit.cover,
-                    errorBuilder: (
-                      BuildContext context,
-                      Object error,
-                      StackTrace? stackTrace,
-                    ) {
-                      return const ColoredBox(color: AppColors.cardBackground);
-                    },
-                  ),
+            if (imagePath == null)
+              const ColoredBox(color: AppColors.cardBackground)
+            else
+              Image.network(
+                getImageUrl(imagePath, 'w342'),
+                fit: BoxFit.cover,
+                errorBuilder: (
+                  BuildContext context,
+                  Object error,
+                  StackTrace? stackTrace,
+                ) {
+                  return const ColoredBox(color: AppColors.cardBackground);
+                },
+              ),
             Container(
-              color: Colors.black.withOpacity(0.4),
               alignment: Alignment.bottomLeft,
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.76),
+                  ],
+                ),
+              ),
               child: Text(
                 season.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: AppColors.text,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),
@@ -883,43 +1237,59 @@ class _SeasonCard extends StatelessWidget {
   }
 }
 
-class _PosterTile extends StatelessWidget {
-  const _PosterTile({
-    required this.imagePath,
-    required this.width,
-    required this.height,
-    required this.borderRadius,
+class _RelatedCard extends StatelessWidget {
+  const _RelatedCard({
+    required this.item,
     required this.onTap,
   });
 
-  final String? imagePath;
-  final double width;
-  final double height;
-  final double borderRadius;
+  final MediaSummary item;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
-        child: SizedBox(
-          width: width,
-          height: height,
-          child: imagePath == null
-              ? const ColoredBox(color: AppColors.cardBackground)
-              : Image.network(
-                  getImageUrl(imagePath, 'w342'),
-                  fit: BoxFit.cover,
-                  errorBuilder: (
-                    BuildContext context,
-                    Object error,
-                    StackTrace? stackTrace,
-                  ) {
-                    return const ColoredBox(color: AppColors.cardBackground);
-                  },
-                ),
+      child: SizedBox(
+        width: 126,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Container(
+              width: 126,
+              height: 188,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                color: AppColors.cardBackground,
+              ),
+              child: item.posterPath == null
+                  ? const ColoredBox(color: AppColors.cardBackground)
+                  : Image.network(
+                      getImageUrl(item.posterPath, 'w342'),
+                      fit: BoxFit.cover,
+                      errorBuilder: (
+                        BuildContext context,
+                        Object error,
+                        StackTrace? stackTrace,
+                      ) {
+                        return const ColoredBox(
+                            color: AppColors.cardBackground);
+                      },
+                    ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              item.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -935,33 +1305,31 @@ class _CastCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<String> nameParts =
         member.name.split(' ').where((String part) => part.isNotEmpty).toList();
+    final String initials = nameParts
+        .take(2)
+        .map((String part) => part.substring(0, 1).toUpperCase())
+        .join();
 
     return SizedBox(
-      width: 85,
+      width: 96,
       child: Column(
         children: <Widget>[
           Container(
-            width: 80,
-            height: 80,
+            width: 86,
+            height: 86,
             clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              border:
-                  Border.all(color: Colors.white.withOpacity(0.15), width: 2),
+              color: Color(0xFF191A1D),
             ),
             child: member.profilePath == null
-                ? ColoredBox(
-                    color: const Color(0xFF333333),
-                    child: Center(
-                      child: Text(
-                        nameParts.isEmpty
-                            ? '?'
-                            : nameParts.first.substring(0, 1),
-                        style: const TextStyle(
-                          color: AppColors.text,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
+                ? Center(
+                    child: Text(
+                      initials.isEmpty ? '?' : initials,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                   )
@@ -973,41 +1341,21 @@ class _CastCard extends StatelessWidget {
                       Object error,
                       StackTrace? stackTrace,
                     ) {
-                      return const ColoredBox(color: Color(0xFF333333));
+                      return const ColoredBox(color: Color(0xFF191A1D));
                     },
                   ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
-            nameParts.isEmpty ? member.name : nameParts.first,
+            member.name,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.text,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          Text(
-            nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '',
-            textAlign: TextAlign.center,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: AppColors.text,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            member.character.split('/').first.split('(').first.trim(),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.textSubtle,
-              fontSize: 10,
-              fontStyle: FontStyle.italic,
+              fontSize: 13,
+              height: 1.15,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -1017,3 +1365,18 @@ class _CastCard extends StatelessWidget {
 }
 
 String _year(String date) => date.isEmpty ? '' : date.split('-').first;
+
+String _formatRuntime(int minutes) {
+  if (minutes <= 0) {
+    return '';
+  }
+  final int hours = minutes ~/ 60;
+  final int mins = minutes % 60;
+  if (hours <= 0) {
+    return '${mins}m';
+  }
+  if (mins == 0) {
+    return '${hours}h';
+  }
+  return '${hours}h ${mins}m';
+}

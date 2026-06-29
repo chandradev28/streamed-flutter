@@ -10,6 +10,7 @@ import 'addons_screen.dart';
 import 'integrations_screen.dart';
 import 'layout_screen.dart';
 import 'playback_screen.dart';
+import 'streams_screen.dart';
 import 'torboxers_screen.dart';
 import 'trakt_screen.dart';
 
@@ -110,6 +111,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  void _openStreams() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => StreamsScreen(),
+      ),
+    );
+  }
+
   void _openTrakt() {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -135,7 +144,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'account profile trakt sync switch',
     );
     final bool showGeneral = _matchesSettingsSearch(
-      'general layout content discovery addons downloads playback integrations notifications torboxers',
+      'general layout content discovery addons downloads playback streams badges integrations notifications torboxers',
     );
     final bool showAbout = _matchesSettingsSearch(
       'about supporters contributors',
@@ -249,6 +258,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     subtitle: 'Player, subtitles, and auto-play',
                     accent: _accent,
                     onTap: _openPlayback,
+                  ),
+                  _SettingsActionTile(
+                    icon: Icons.local_offer_rounded,
+                    title: 'Streams',
+                    subtitle: 'Source badges and stream list display',
+                    accent: _accent,
+                    onTap: _openStreams,
                   ),
                   _SettingsActionTile(
                     icon: Icons.link_rounded,

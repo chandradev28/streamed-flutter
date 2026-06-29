@@ -156,6 +156,13 @@ class MediaTrailer {
     return null;
   }
 
+  String? get thumbnailUrl {
+    if (site.toLowerCase() == 'youtube' && key.isNotEmpty) {
+      return 'https://img.youtube.com/vi/$key/hqdefault.jpg';
+    }
+    return null;
+  }
+
   factory MediaTrailer.fromJson(Map<String, dynamic> json) {
     return MediaTrailer(
       name: (json['name'] as String?) ?? 'Trailer',
@@ -238,6 +245,7 @@ class MediaDetail {
     required this.similarItems,
     this.productionCompanies = const <ProductionCompanyItem>[],
     this.trailers = const <MediaTrailer>[],
+    this.director,
     this.originalLanguage,
     this.status,
     this.country,
@@ -262,6 +270,7 @@ class MediaDetail {
   final List<CastItem> cast;
   final List<MediaSummary> similarItems;
   final List<MediaTrailer> trailers;
+  final String? director;
   final String? originalLanguage;
   final String? status;
   final String? country;
@@ -272,6 +281,7 @@ class MediaDetail {
     List<CastItem> cast = const <CastItem>[],
     List<MediaSummary> similarItems = const <MediaSummary>[],
     List<MediaTrailer> trailers = const <MediaTrailer>[],
+    String? director,
   }) {
     final int runtime = mediaType == 'movie'
         ? (json['runtime'] as num?)?.toInt() ?? 0
@@ -317,6 +327,7 @@ class MediaDetail {
       cast: cast,
       similarItems: similarItems,
       trailers: trailers,
+      director: director,
       originalLanguage: json['original_language'] as String?,
       status: json['status'] as String?,
       country: (((json['production_countries'] as List<dynamic>?) ??

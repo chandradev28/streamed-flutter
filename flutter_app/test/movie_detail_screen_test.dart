@@ -58,8 +58,8 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 450));
 
-    expect(find.text('Galaxy Squad'), findsOneWidget);
-    expect(find.text('Watch now'), findsOneWidget);
+    expect(find.text('Galaxy Squad'), findsWidgets);
+    expect(find.text('Play'), findsOneWidget);
   });
 
   testWidgets('movie detail opens streamed sources flow', (
@@ -98,11 +98,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.tap(find.text('Watch now'));
+    await tester.tap(find.text('Play'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Sources'), findsOneWidget);
     expect(find.text('Movie Title'), findsWidgets);
   });
 
@@ -122,10 +121,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Galaxy Squad'), findsOneWidget);
-    expect(find.text('Watch now'), findsOneWidget);
+    expect(find.text('Galaxy Squad'), findsWidgets);
+    expect(find.text('Play'), findsOneWidget);
 
-    await tester.tap(find.text('Watch now'));
+    await tester.tap(find.text('Play'));
     await tester.pumpAndSettle();
 
     expect(find.text('Season 1'), findsOneWidget);
