@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
-import 'package:fvp/fvp.dart' as fvp;
 
 import 'src/app.dart';
 
@@ -16,18 +17,49 @@ class MyHttpOverrides extends HttpOverrides {
 
 void main() {
   HttpOverrides.global = MyHttpOverrides();
-  WidgetsFlutterBinding.ensureInitialized();
-  try {
-    fvp.registerWith(
-      options: <String, Object>{
-        'fastSeek': true,
-        'lowLatency': 1,
-        'video.decoders': <String>['auto'],
-      },
-    );
-  } catch (_) {
-    // Some Android devices can fail native player registration at startup.
-    // Keep the app usable and let external playback remain available.
-  }
-  runApp(const StreamedApp());
+  runZonedGuarded(
+    () {
+      WidgetsFlutterBinding.ensureInitialized();
+      FlutterError.onError = FlutterError.presentError;
+      PlatformDispatcher.instance.onError =
+          (Object error, StackTrace stackTrace) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'streamed platform dispatcher',
+          ),
+        );
+        return true;
+      };
+      ErrorWidget.builder = (_) => const Directionality(
+            textDirection: TextDirection.ltr,
+            child: ColoredBox(
+              color: Color(0xFF050505),
+              child: Center(
+                child: Text(
+                  'Streamed could not finish loading.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFFFFFFFF),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          );
+
+      runApp(const StreamedApp());
+    },
+    (Object error, StackTrace stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'streamed startup',
+        ),
+      );
+    },
+  );
 }

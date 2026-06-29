@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'models/torbox_models.dart';
@@ -24,7 +26,15 @@ class _StreamedAppState extends State<StreamedApp> {
   @override
   void initState() {
     super.initState();
-    _settingsRepository.loadSettings();
+    unawaited(_loadInitialSettings());
+  }
+
+  Future<void> _loadInitialSettings() async {
+    try {
+      await _settingsRepository.loadSettings();
+    } catch (_) {
+      // Keep the default theme if persisted settings cannot be read.
+    }
   }
 
   @override

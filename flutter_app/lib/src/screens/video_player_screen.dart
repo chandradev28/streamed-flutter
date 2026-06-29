@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:fvp/fvp.dart';
+import 'package:fvp/fvp.dart' as fvp;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -78,6 +78,7 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   static const MethodChannel _externalPlayerChannel =
       MethodChannel('streamed/external_player');
+  static bool _playerBackendRegistered = false;
 
   VideoPlayerController? _controller;
   List<TorBoxTorrentFile> _files = const <TorBoxTorrentFile>[];
@@ -377,6 +378,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     VideoPlayerController? nextController;
     try {
+      _ensurePlayerBackendRegistered();
       final VideoPlayerController? previousController = _controller;
       setState(() {
         _controller = null;
@@ -453,6 +455,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _error = _friendlyError(error);
         _playbackIssue = _describePlaybackIssue(error);
       });
+    }
+  }
+
+  void _ensurePlayerBackendRegistered() {
+    if (_playerBackendRegistered) {
+      return;
+    }
+    try {
+      fvp.registerWith(
+        options: <String, Object>{
+          'fastSeek': true,
+          'lowLatency': 1,
+          'video.decoders': <String>['auto'],
+        },
+      );
+      _playerBackendRegistered = true;
+    } catch (_) {
+      // Fall back to the default video_player backend if fvp cannot register.
+      _playerBackendRegistered = true;
     }
   }
 
