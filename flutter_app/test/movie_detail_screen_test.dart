@@ -105,6 +105,32 @@ void main() {
     expect(find.text('Movie Title'), findsWidgets);
   });
 
+  testWidgets('movie detail falls back to addon metadata for external ids', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MovieDetailScreen(
+          id: 0,
+          mediaType: 'movie',
+          externalId: 'tt7654321',
+          fallbackTitle: 'Addon Only Movie',
+          fallbackOverview: 'Metadata supplied by the Stremio addon.',
+          fallbackReleaseInfo: '2026',
+          mediaService: const _MissingExternalMediaService(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Could not load this title.'), findsNothing);
+    expect(find.text('Addon Only Movie'), findsWidgets);
+    expect(find.textContaining('Stremio addon'), findsOneWidget);
+    expect(find.text('Play'), findsOneWidget);
+  });
+
   testWidgets('tv detail can navigate into episodes flow', (
     WidgetTester tester,
   ) async {
@@ -144,5 +170,22 @@ class _FlakyMediaService extends FakeMediaService {
       throw Exception('Transient TMDB failure');
     }
     return super.getMediaDetail(id, mediaType);
+  }
+}
+
+class _MissingExternalMediaService extends FakeMediaService {
+  const _MissingExternalMediaService();
+
+  @override
+  Future<MediaDetail> getMediaDetail(int id, String mediaType) async {
+    throw Exception('TMDB unavailable');
+  }
+
+  @override
+  Future<MediaDetail?> findMediaByExternalId(
+    String externalId,
+    String mediaType,
+  ) async {
+    throw Exception('External lookup unavailable');
   }
 }

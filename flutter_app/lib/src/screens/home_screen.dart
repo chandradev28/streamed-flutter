@@ -156,32 +156,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final String imdbId = item.id.startsWith('tt') ? item.id : '';
 
     if (imdbId.isNotEmpty) {
-      try {
-        final MediaDetail? detail = await widget.mediaService
-            .findMediaByExternalId(imdbId, item.mediaType);
-        if (!mounted) {
-          return;
-        }
-        if (detail != null) {
-          Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (BuildContext context) => MovieDetailScreen(
-                id: detail.id,
-                mediaType: detail.mediaType,
-                mediaService: widget.mediaService,
-              ),
-            ),
-          );
-          return;
-        }
-      } catch (_) {
-        if (!mounted) {
-          return;
-        }
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not load this title info yet.')),
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (BuildContext context) => MovieDetailScreen(
+            id: 0,
+            mediaType: item.mediaType,
+            externalId: imdbId,
+            fallbackTitle: item.name,
+            fallbackPosterPath: item.poster,
+            fallbackBackdropPath: item.background ?? item.poster,
+            fallbackOverview: item.description,
+            fallbackReleaseInfo: item.releaseInfo,
+            mediaService: widget.mediaService,
+          ),
+        ),
       );
       return;
     }
@@ -196,6 +184,11 @@ class _HomeScreenState extends State<HomeScreen> {
             builder: (BuildContext context) => MovieDetailScreen(
               id: tmdbId,
               mediaType: item.mediaType,
+              fallbackTitle: item.name,
+              fallbackPosterPath: item.poster,
+              fallbackBackdropPath: item.background ?? item.poster,
+              fallbackOverview: item.description,
+              fallbackReleaseInfo: item.releaseInfo,
               mediaService: widget.mediaService,
             ),
           ),

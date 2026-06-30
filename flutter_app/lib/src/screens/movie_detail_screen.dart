@@ -17,6 +17,13 @@ class MovieDetailScreen extends StatefulWidget {
     super.key,
     required this.id,
     required this.mediaType,
+    this.externalId,
+    this.fallbackTitle,
+    this.fallbackPosterPath,
+    this.fallbackBackdropPath,
+    this.fallbackOverview,
+    this.fallbackReleaseInfo,
+    this.fallbackSourceName,
     MediaCatalogService? mediaService,
     MdbListApiService? mdbListApiService,
     FavoritesRepository? favoritesRepository,
@@ -26,6 +33,13 @@ class MovieDetailScreen extends StatefulWidget {
 
   final int id;
   final String mediaType;
+  final String? externalId;
+  final String? fallbackTitle;
+  final String? fallbackPosterPath;
+  final String? fallbackBackdropPath;
+  final String? fallbackOverview;
+  final String? fallbackReleaseInfo;
+  final String? fallbackSourceName;
   final MediaCatalogService mediaService;
   final MdbListApiService mdbListApiService;
   final FavoritesRepository favoritesRepository;
@@ -80,8 +94,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
 
     try {
-      final MediaDetail detail =
-          await widget.mediaService.getMediaDetail(widget.id, widget.mediaType);
+      final MediaDetail detail = await _fetchDetail();
       if (!mounted) {
         return;
       }
@@ -106,10 +119,74 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         return;
       }
 
+      final MediaDetail? fallback = _fallbackDetail();
       setState(() {
+        _detail = fallback;
         _loading = false;
       });
     }
+  }
+
+  Future<MediaDetail> _fetchDetail() async {
+    if (widget.id > 0) {
+      return widget.mediaService.getMediaDetail(widget.id, widget.mediaType);
+    }
+
+    final String externalId = (widget.externalId ?? '').trim();
+    if (externalId.isNotEmpty) {
+      try {
+        final MediaDetail? detail = await widget.mediaService
+            .findMediaByExternalId(externalId, widget.mediaType);
+        if (detail != null) {
+          return detail;
+        }
+      } catch (_) {
+        final MediaDetail? fallback = _fallbackDetail();
+        if (fallback != null) {
+          return fallback;
+        }
+        rethrow;
+      }
+    }
+
+    final MediaDetail? fallback = _fallbackDetail();
+    if (fallback != null) {
+      return fallback;
+    }
+    throw StateError('No metadata source was available for this title.');
+  }
+
+  MediaDetail? _fallbackDetail() {
+    final String title = (widget.fallbackTitle ?? '').trim();
+    final String externalId = (widget.externalId ?? '').trim();
+    if (title.isEmpty && externalId.isEmpty) {
+      return null;
+    }
+
+    return MediaDetail(
+      id: widget.id,
+      mediaType: widget.mediaType,
+      title: title.isEmpty ? externalId : title,
+      overview: (widget.fallbackOverview ?? '').trim(),
+      posterPath: widget.fallbackPosterPath,
+      backdropPath: widget.fallbackBackdropPath ?? widget.fallbackPosterPath,
+      voteAverage: 0,
+      voteCount: 0,
+      releaseDate: _releaseDateFromInfo(widget.fallbackReleaseInfo),
+      runtimeMinutes: 0,
+      genres: const <GenreItem>[],
+      seasons: const <SeasonSummary>[],
+      numberOfSeasons: 0,
+      networks: widget.fallbackSourceName == null
+          ? const <NetworkItem>[]
+          : <NetworkItem>[
+              NetworkItem(id: 0, name: widget.fallbackSourceName!),
+            ],
+      imdbId: externalId.isEmpty ? null : externalId,
+      cast: const <CastItem>[],
+      similarItems: const <MediaSummary>[],
+      director: widget.fallbackSourceName,
+    );
   }
 
   Future<void> _loadExternalRatings(MediaDetail detail) async {
@@ -201,10 +278,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       MaterialPageRoute<void>(
         builder: (BuildContext context) => StreamedSourcesScreen(
           title: detail.title,
-          posterPath: detail.posterPath,
+          posterPath: detail.posterPath ?? detail.backdropPath,
           mediaType: detail.mediaType,
           imdbId: detail.imdbId!,
-          tmdbId: detail.id,
+          tmdbId: detail.id > 0 ? detail.id : null,
         ),
       ),
     );
@@ -1365,6 +1442,11 @@ class _CastCard extends StatelessWidget {
 }
 
 String _year(String date) => date.isEmpty ? '' : date.split('-').first;
+
+String _releaseDateFromInfo(String? value) {
+  final RegExpMatch? match = RegExp(r'(19|20)\d{2}').firstMatch(value ?? '');
+  return match == null ? '' : '${match.group(0)}-01-01';
+}
 
 String _formatRuntime(int minutes) {
   if (minutes <= 0) {
