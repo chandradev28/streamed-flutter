@@ -555,12 +555,17 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
               ],
             ),
           ),
-          _SourcesPinnedToolbar(
-            title: widget.title,
-            logoPath: widget.logoPath,
-            showTitle: _showPinnedTitle,
-            onBack: () => Navigator.of(context).maybePop(),
-            onRefresh: _loading ? null : _search,
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: _SourcesPinnedToolbar(
+              title: widget.title,
+              logoPath: widget.logoPath,
+              showTitle: _showPinnedTitle,
+              onBack: () => Navigator.of(context).maybePop(),
+              onRefresh: _loading ? null : _search,
+            ),
           ),
         ],
       ),
@@ -641,21 +646,21 @@ class _SourcesHero extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const SizedBox(height: 64),
+            const SizedBox(height: 58),
             TitleLogo(
               title: title,
               logoPath: logoPath,
               maxLines: 2,
               textAlign: TextAlign.left,
-              logoHeight: 104,
-              maxLogoWidth: 360,
+              logoHeight: 88,
+              maxLogoWidth: 330,
               textStyle: const TextStyle(
                 color: AppColors.text,
-                fontSize: 38,
+                fontSize: 34,
                 height: 0.95,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -1.5,
@@ -674,7 +679,7 @@ class _SourcesHero extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             Row(
               children: <Widget>[
                 GestureDetector(
@@ -682,8 +687,8 @@ class _SourcesHero extends StatelessWidget {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 160),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 11,
+                      horizontal: 15,
+                      vertical: 10,
                     ),
                     decoration: BoxDecoration(
                       color: cachedOnly
@@ -837,10 +842,10 @@ class _SourceTabsStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 64,
+      height: 58,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
+        padding: const EdgeInsets.fromLTRB(18, 4, 18, 10),
         children: <Widget>[
           _SourceFilterChip(
             label: 'All',
@@ -906,10 +911,7 @@ class _SourceResultGroup extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _StreamedSourceCard(
                   source: source,
-                  badges: badgeService.matchesForSource(
-                    badges: badges,
-                    source: source,
-                  ),
+                  badges: _badgesForCard(badgeService, badges, source),
                   onPlay: () => onPlay(source),
                   onAddToTorBox: () => onAddToTorBox(source),
                 ),
@@ -923,10 +925,7 @@ class _SourceResultGroup extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _StreamedSourceCard(
                     source: source,
-                    badges: badgeService.matchesForSource(
-                      badges: badges,
-                      source: source,
-                    ),
+                    badges: _badgesForCard(badgeService, badges, source),
                     onPlay: () => onPlay(source),
                     onAddToTorBox: () => onAddToTorBox(source),
                   ),
@@ -941,10 +940,7 @@ class _SourceResultGroup extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _StreamedSourceCard(
                     source: source,
-                    badges: badgeService.matchesForSource(
-                      badges: badges,
-                      source: source,
-                    ),
+                    badges: _badgesForCard(badgeService, badges, source),
                     onPlay: () => onPlay(source),
                     onAddToTorBox: () => onAddToTorBox(source),
                   ),
@@ -980,6 +976,110 @@ class _SmallGroupLabel extends StatelessWidget {
   }
 }
 
+List<StreamBadge> _badgesForCard(
+  StreamBadgeService badgeService,
+  List<StreamBadge> customBadges,
+  StreamSource source,
+) {
+  final List<StreamBadge> matched = badgeService.matchesForSource(
+    badges: customBadges,
+    source: source,
+    limit: 10,
+  );
+  final List<StreamBadge> generated = _generatedStreamBadges(source);
+  final Set<String> seen = <String>{};
+  return <StreamBadge>[
+    ...matched,
+    ...generated,
+  ]
+      .where((StreamBadge badge) {
+        final String key = badge.name.trim().toLowerCase();
+        return key.isNotEmpty && seen.add(key);
+      })
+      .take(12)
+      .toList(growable: false);
+}
+
+List<StreamBadge> _generatedStreamBadges(StreamSource source) {
+  final String text = <String>[
+    source.quality,
+    source.title,
+    source.description,
+    if (source.fileName != null) source.fileName!,
+  ].join(' ').toLowerCase();
+  final List<StreamBadge> badges = <StreamBadge>[];
+
+  void add(String name, {String? tagColor, String? textColor}) {
+    badges.add(
+      StreamBadge(
+        name: name,
+        pattern: RegExp.escape(name),
+        tagColor: tagColor,
+        textColor: textColor,
+        borderColor: '#33FFFFFF',
+      ),
+    );
+  }
+
+  if (text.contains('2160') || text.contains('4k') || text.contains('uhd')) {
+    add('4K', tagColor: '#F7B928', textColor: '#050505');
+  } else if (text.contains('1080')) {
+    add('1080p', tagColor: '#FFFFFF', textColor: '#050505');
+  } else if (text.contains('720')) {
+    add('720p');
+  }
+  if (text.contains('remux')) {
+    add('REMUX');
+  }
+  if (text.contains('bluray') || text.contains('blu-ray')) {
+    add('BLURAY');
+  } else if (text.contains('web-dl') || text.contains('webdl')) {
+    add('WEBDL');
+  } else if (text.contains('webrip')) {
+    add('WEBRIP');
+  } else if (text.contains('hdtv')) {
+    add('HDTV');
+  }
+  if (text.contains('x265') ||
+      text.contains('h.265') ||
+      text.contains('hevc')) {
+    add('HEVC', tagColor: '#1D8F3A');
+  } else if (text.contains('x264') ||
+      text.contains('h.264') ||
+      text.contains('avc')) {
+    add('H.264');
+  }
+  if (text.contains('dolby vision') || RegExp(r'\bdv\b').hasMatch(text)) {
+    add('DV');
+  }
+  if (text.contains('hdr10+')) {
+    add('HDR10+');
+  } else if (text.contains('hdr10')) {
+    add('HDR10');
+  } else if (RegExp(r'\bhdr\b').hasMatch(text)) {
+    add('HDR');
+  }
+  if (text.contains('atmos')) {
+    add('ATMOS');
+  }
+  if (text.contains('7.1')) {
+    add('7.1');
+  } else if (text.contains('5.1')) {
+    add('5.1');
+  }
+  if ((source.cacheProvider ?? '').contains('TB+')) {
+    add('TB+');
+  }
+  if ((source.cacheProvider ?? '').contains('RD+')) {
+    add('RD+');
+  }
+  if (source.sizeLabel.trim().isNotEmpty) {
+    add(source.sizeLabel.trim().toUpperCase());
+  }
+
+  return badges;
+}
+
 class _StreamedSourceCard extends StatelessWidget {
   const _StreamedSourceCard({
     required this.source,
@@ -1009,30 +1109,30 @@ class _StreamedSourceCard extends StatelessWidget {
 
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(24),
       child: InkWell(
         onTap: onPlay,
         onLongPress: source.hasTorrentSource ? onAddToTorBox : null,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 17, 18, 15),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            color: const Color(0xFF121416).withOpacity(0.78),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            borderRadius: BorderRadius.circular(24),
+            color: const Color(0xFF141517).withOpacity(0.70),
+            border: Border.all(color: Colors.white.withOpacity(0.10)),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: <Color>[
-                Colors.white.withOpacity(0.075),
-                Colors.white.withOpacity(0.035),
+                Colors.white.withOpacity(0.09),
+                Colors.white.withOpacity(0.025),
               ],
             ),
             boxShadow: <BoxShadow>[
               BoxShadow(
                 color: Colors.black.withOpacity(0.28),
-                blurRadius: 24,
-                offset: const Offset(0, 16),
+                blurRadius: 20,
+                offset: const Offset(0, 12),
               ),
             ],
           ),
@@ -1048,7 +1148,7 @@ class _StreamedSourceCard extends StatelessWidget {
                         const Icon(
                           Icons.bolt_rounded,
                           color: Color(0xFFFFD447),
-                          size: 24,
+                          size: 23,
                         ),
                         const SizedBox(width: 6),
                         Expanded(
@@ -1060,7 +1160,7 @@ class _StreamedSourceCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: AppColors.text,
-                              fontSize: 22,
+                              fontSize: 24,
                               fontWeight: FontWeight.w900,
                               letterSpacing: -0.5,
                             ),
@@ -1069,13 +1169,19 @@ class _StreamedSourceCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onPlay,
-                    icon: const Icon(
-                      Icons.play_arrow_rounded,
-                      color: AppColors.text,
-                      size: 28,
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: IconButton.filled(
+                      visualDensity: VisualDensity.compact,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white.withOpacity(0.08),
+                      ),
+                      onPressed: onPlay,
+                      icon: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: AppColors.text,
+                        size: 28,
+                      ),
                     ),
                   ),
                 ],
@@ -1093,7 +1199,7 @@ class _StreamedSourceCard extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               if (featureLine.isNotEmpty)
                 _SourceInfoLine(
                     icon: Icons.movie_creation_outlined, text: featureLine),
@@ -1113,11 +1219,11 @@ class _StreamedSourceCard extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 10),
                   child: Text(
                     fileLine,
-                    maxLines: 3,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: AppColors.textMuted,
-                      fontSize: 14,
+                      fontSize: 14.5,
                       height: 1.35,
                     ),
                   ),
@@ -1274,7 +1380,7 @@ class _SourceFilterChip extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
         decoration: BoxDecoration(
           color: selected ? AppColors.text : Colors.white.withOpacity(0.06),
           borderRadius: BorderRadius.circular(999),
@@ -1283,8 +1389,8 @@ class _SourceFilterChip extends StatelessWidget {
           label,
           style: TextStyle(
             color: selected ? AppColors.background : AppColors.text,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),

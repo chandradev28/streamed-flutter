@@ -103,4 +103,40 @@ void main() {
       'UHD 4K',
     ]);
   });
+
+  test('parses alternate Badger filter and url fields', () {
+    const StreamBadgeService service = StreamBadgeService();
+
+    final List<StreamBadge> badges = service.parseBadges('''
+{
+  "templates": [
+    {
+      "name": "HEVC",
+      "filter": "x265|HEVC",
+      "url": "https://example.test/hevc.png"
+    }
+  ]
+}
+''');
+
+    expect(badges, hasLength(1));
+    expect(badges.single.pattern, 'x265|HEVC');
+    expect(badges.single.imageUrl, 'https://example.test/hevc.png');
+
+    final List<StreamBadge> matches = service.matchesForSource(
+      badges: badges,
+      source: const StreamSource(
+        id: '3',
+        provider: 'addon',
+        sourceDisplayName: 'StremThru Torz',
+        title: 'Maniac.1980.1080p.BluRay.x265.mkv',
+        description: 'HEVC / 7.1',
+        quality: '1080p',
+        sizeLabel: '10 GB',
+        isCached: false,
+      ),
+    );
+
+    expect(matches.map((StreamBadge badge) => badge.name), <String>['HEVC']);
+  });
 }

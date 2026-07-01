@@ -25,12 +25,17 @@ class StreamBadge {
       pattern: ((json['pattern'] as String?) ??
               (json['match'] as String?) ??
               (json['regex'] as String?) ??
+              (json['filter'] as String?) ??
+              (json['expression'] as String?) ??
               '')
           .trim(),
       imageUrl: ((json['imageURL'] as String?) ??
               (json['imageUrl'] as String?) ??
               (json['image'] as String?) ??
-              (json['image_url'] as String?))
+              (json['image_url'] as String?) ??
+              (json['url'] as String?) ??
+              (json['src'] as String?) ??
+              (json['badge'] as String?))
           ?.trim(),
       tagColor: (json['tagColor'] as String?)?.trim(),
       borderColor: (json['borderColor'] as String?)?.trim(),
@@ -145,10 +150,15 @@ class StreamBadgeService {
     return row.containsKey('pattern') ||
         row.containsKey('match') ||
         row.containsKey('regex') ||
+        row.containsKey('filter') ||
+        row.containsKey('expression') ||
         row.containsKey('imageURL') ||
         row.containsKey('imageUrl') ||
         row.containsKey('image') ||
-        row.containsKey('image_url');
+        row.containsKey('image_url') ||
+        row.containsKey('url') ||
+        row.containsKey('src') ||
+        row.containsKey('badge');
   }
 
   bool _isEnabled(Map<String, dynamic> row) {
