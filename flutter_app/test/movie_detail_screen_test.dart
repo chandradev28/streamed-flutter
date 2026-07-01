@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_app/src/models/tmdb_media_models.dart';
+import 'package:flutter_app/src/models/torbox_models.dart';
 import 'package:flutter_app/src/screens/movie_detail_screen.dart';
+import 'package:flutter_app/src/services/stremio_addons_service.dart';
 
 import 'test_fakes.dart';
 
@@ -155,6 +157,7 @@ void main() {
           fallbackOverview: 'Metadata supplied by the Stremio addon.',
           fallbackReleaseInfo: '2026',
           mediaService: const _MissingExternalMediaService(),
+          addonsService: _EmptyMetadataAddonsService(),
         ),
       ),
     );
@@ -166,6 +169,31 @@ void main() {
     expect(find.text('Addon Only Movie'), findsWidgets);
     expect(find.textContaining('Stremio addon'), findsOneWidget);
     expect(find.text('Play'), findsOneWidget);
+  });
+
+  testWidgets('movie detail loads Stremio metadata before TMDB', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MovieDetailScreen(
+          id: 0,
+          mediaType: 'tv',
+          externalId: 'tt0903747',
+          fallbackTitle: 'Fallback Show',
+          mediaService: const _MissingExternalMediaService(),
+          addonsService: _FakeMetadataAddonsService(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Could not load this title.'), findsNothing);
+    expect(find.text('Addon Show'), findsWidgets);
+    expect(find.textContaining('Loaded from Stremio metadata'), findsOneWidget);
+    expect(find.text('Drama'), findsOneWidget);
   });
 
   testWidgets('tv detail can navigate into episodes flow', (
@@ -234,5 +262,41 @@ class _MissingExternalMediaService extends FakeMediaService {
     String mediaType,
   ) async {
     throw Exception('External lookup unavailable');
+  }
+}
+
+class _EmptyMetadataAddonsService extends StremioAddonsService {
+  @override
+  Future<AddonMetaItem?> fetchMetadata({
+    required String mediaType,
+    required String id,
+  }) async {
+    return null;
+  }
+}
+
+class _FakeMetadataAddonsService extends StremioAddonsService {
+  @override
+  Future<AddonMetaItem?> fetchMetadata({
+    required String mediaType,
+    required String id,
+  }) async {
+    return const AddonMetaItem(
+      id: 'tt0903747',
+      type: 'series',
+      name: 'Addon Show',
+      poster: 'https://example.test/poster.jpg',
+      background: 'https://example.test/backdrop.jpg',
+      logo: 'https://example.test/logo.png',
+      description: 'Loaded from Stremio metadata.',
+      releaseInfo: '2008',
+      runtime: '47 min',
+      genres: <String>['Drama'],
+      cast: <String>['Bryan Cranston'],
+      director: 'Vince Gilligan',
+      country: 'United States of America',
+      language: 'en',
+      status: 'Ended',
+    );
   }
 }

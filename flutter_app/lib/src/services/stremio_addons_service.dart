@@ -174,6 +174,42 @@ class StremioAddonsService {
     return rows;
   }
 
+  Future<AddonMetaItem?> fetchMetadata({
+    required String mediaType,
+    required String id,
+  }) async {
+    final List<AddonManifest> addons = await getEnabledAddons();
+    final String contentType = mediaType == 'tv' ? 'series' : mediaType;
+
+    for (final AddonManifest addon in addons) {
+      if (!addon.supportsMeta(mediaType, id)) {
+        continue;
+      }
+
+      try {
+        final Uri metaUri = _buildMetaUri(addon, contentType, id);
+        final Map<String, dynamic> payload = await _fetchJson(metaUri);
+        final Map<String, dynamic>? meta =
+            payload['meta'] as Map<String, dynamic>?;
+        if (meta == null) {
+          continue;
+        }
+        final AddonMetaItem item = AddonMetaItem.fromJson(
+          <String, dynamic>{
+            ...meta,
+            'poster': resolveAddonUrl(addon, meta['poster'] as String?),
+            'background': resolveAddonUrl(addon, meta['background'] as String?),
+            'logo': resolveAddonUrl(addon, meta['logo'] as String?),
+          },
+        );
+        if (item.name.trim().isNotEmpty || item.description != null) {
+          return item;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
   Future<List<StreamSource>> getStreams({
     required String mediaType,
     required String streamId,
@@ -406,6 +442,17 @@ class StremioAddonsService {
     return baseUri.replace(
       path: '${baseUri.path}/catalog/${catalog.type}/${catalog.id}.json'
           .replaceAll('//', '/'),
+      queryParameters: originalUri.queryParameters.isEmpty
+          ? null
+          : originalUri.queryParameters,
+    );
+  }
+
+  Uri _buildMetaUri(AddonManifest addon, String contentType, String id) {
+    final Uri originalUri = Uri.parse(addon.originalUrl);
+    final Uri baseUri = Uri.parse(addon.url);
+    return baseUri.replace(
+      path: '${baseUri.path}/meta/$contentType/$id.json'.replaceAll('//', '/'),
       queryParameters: originalUri.queryParameters.isEmpty
           ? null
           : originalUri.queryParameters,

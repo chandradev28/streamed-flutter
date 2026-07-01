@@ -9,14 +9,12 @@ import '../services/app_settings_repository.dart';
 import '../services/stremio_addons_service.dart';
 import '../services/tmdb_image.dart';
 import '../services/tmdb_media_service.dart';
-import '../services/trakt_api_service.dart';
 import '../services/watch_history_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/layout_options.dart';
 import 'addons_screen.dart';
 import 'episode_screen.dart';
 import 'movie_detail_screen.dart';
-import 'profile_screen.dart';
 import 'streamed_sources_screen.dart';
 import 'video_player_screen.dart';
 
@@ -26,20 +24,17 @@ class HomeScreen extends StatefulWidget {
     MediaCatalogService? mediaService,
     ContinueWatchingRepository? watchHistoryRepository,
     AppSettingsRepository? settingsRepository,
-    TraktApiService? traktApiService,
     StremioAddonsService? addonsService,
     this.onSettingsChanged,
   })  : mediaService = mediaService ?? TmdbMediaService(),
         watchHistoryRepository =
             watchHistoryRepository ?? WatchHistoryRepository(),
         settingsRepository = settingsRepository ?? AppSettingsRepository(),
-        traktApiService = traktApiService ?? TraktApiService(),
         addonsService = addonsService ?? StremioAddonsService();
 
   final MediaCatalogService mediaService;
   final ContinueWatchingRepository watchHistoryRepository;
   final AppSettingsRepository settingsRepository;
-  final TraktApiService traktApiService;
   final StremioAddonsService addonsService;
   final Future<void> Function()? onSettingsChanged;
 
@@ -405,19 +400,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _openProfile() {
-    Navigator.of(context)
-        .push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => ProfileScreen(),
-      ),
-    )
-        .then((_) async {
-      await _loadHome();
-      await widget.onSettingsChanged?.call();
-    });
-  }
-
   Future<void> _openAddons() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -428,6 +410,20 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     await _loadHome();
+  }
+
+  void _openCatalogRow(AddonCatalogRow row) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => _CatalogGridScreen(
+          row: row,
+          addonsService: widget.addonsService,
+          settings: _settings,
+          accent: LayoutOptions.accentFor(_settings),
+          onOpen: _openCatalogItem,
+        ),
+      ),
+    );
   }
 
   List<WatchHistoryItem> _sortContinueWatching(
@@ -485,63 +481,6 @@ class _HomeScreenState extends State<HomeScreen> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: <Widget>[
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                Text(
-                                  'Streamed',
-                                  style: TextStyle(
-                                    color: AppColors.text,
-                                    fontSize: 30,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.8,
-                                  ),
-                                ),
-                                SizedBox(height: 2),
-                                Text(
-                                  'Powered by your Stremio addons',
-                                  style: TextStyle(
-                                    color: AppColors.textMuted,
-                                    fontSize: 12,
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          _SquareHeaderButton(
-                            key: const ValueKey<String>(
-                              'home-profile-button',
-                            ),
-                            icon: Icons.person_outline_rounded,
-                            onTap: _openProfile,
-                          ),
-                        ],
-                      ),
-                      if ((_settings.traktAccessToken ?? '').isNotEmpty &&
-                          _settings.traktSyncProgressEnabled) ...<Widget>[
-                        const SizedBox(height: 14),
-                        _TraktSyncCard(
-                          username: _settings.traktUsername,
-                          accent: accent,
-                          onTap: _openProfile,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
               if (_loading && _catalogRows.isEmpty)
                 const SliverToBoxAdapter(child: _HeroSkeleton())
               else if (_catalogRows.isEmpty)
@@ -587,8 +526,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 for (final AddonCatalogRow row in _catalogRows) ...[
                   _SectionHeader(
                     title: row.catalogName,
-                    actionLabel: row.addonName,
+                    actionLabel: 'View All',
                     accent: accent,
+                    onAction: () => _openCatalogRow(row),
                   ),
                   SliverToBoxAdapter(
                     child: _CatalogRail(
@@ -605,106 +545,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _TraktSyncCard extends StatelessWidget {
-  const _TraktSyncCard({
-    required this.username,
-    required this.accent,
-    required this.onTap,
-  });
-
-  final String? username;
-  final Color accent;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Color.alphaBlend(
-        accent.withOpacity(0.10),
-        AppColors.cardBackground,
-      ),
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: <Widget>[
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: accent.withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Icon(Icons.checklist_rtl_rounded, color: accent),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Text(
-                      'Trakt sync active',
-                      style: TextStyle(
-                        color: AppColors.text,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      (username ?? '').isEmpty
-                          ? 'Scrobbling and progress sync are enabled.'
-                          : 'Signed in as $username',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded, color: accent),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SquareHeaderButton extends StatelessWidget {
-  const _SquareHeaderButton({
-    super.key,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withOpacity(0.12)),
-          color: const Color(0xD9121217),
-        ),
-        child: Icon(icon, color: AppColors.text, size: 20),
       ),
     );
   }
@@ -775,7 +615,7 @@ class _AddonHomeEmptyState extends StatelessWidget {
             ? 'No catalog posters yet'
             : 'Enable a catalog addon';
     final String body = !hasInstalledAddons
-        ? 'Install AIOStreams, Cinemeta, MediaFusion, or another Stremio addon with catalogs. Home stays clean until addons provide posters.'
+        ? 'Install AIOStreams, MediaFusion, or another Stremio addon with catalogs. Home stays clean until addons provide posters.'
         : hasEnabledCatalogAddon
             ? 'Your enabled addons did not return catalog items yet. Refresh them or add a metadata/catalog addon.'
             : 'Installed addons exist, but none with catalogs are enabled. Turn one on to build your Home shelves.';
@@ -1029,7 +869,6 @@ class _AddonHeroPanel extends StatelessWidget {
                     ),
                     if ((item.releaseInfo ?? '').isNotEmpty)
                       _HeroMeta(label: item.releaseInfo!),
-                    _HeroMeta(label: addon.name),
                   ],
                 ),
                 const SizedBox(height: 18),
@@ -1048,7 +887,7 @@ class _AddonHeroPanel extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    'Open sources',
+                    'View Details',
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 15,
@@ -1090,11 +929,13 @@ class _SectionHeader extends StatelessWidget {
     required this.title,
     required this.accent,
     this.actionLabel,
+    this.onAction,
   });
 
   final String title;
   final Color accent;
   final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -1128,22 +969,38 @@ class _SectionHeader extends StatelessWidget {
             ),
             const Spacer(),
             if (actionLabel != null)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
+              Material(
+                color: Colors.white.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(999),
+                child: InkWell(
+                  onTap: onAction,
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Colors.white.withOpacity(0.04)),
-                ),
-                child: Text(
-                  actionLabel!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 15,
+                      vertical: 9,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          actionLabel!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.text,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.text,
+                          size: 18,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1567,6 +1424,24 @@ String _subtitle(WatchHistoryItem item) {
   return item.mediaType == 'movie' ? 'Movie' : 'TV Show';
 }
 
+String _catalogTypeTitle(String type) {
+  switch (type) {
+    case 'movie':
+      return 'Movies';
+    case 'series':
+    case 'tv':
+      return 'Series';
+    default:
+      return 'Titles';
+  }
+}
+
+String _gridYear(String? releaseInfo) {
+  final RegExpMatch? match =
+      RegExp(r'(19|20)\d{2}').firstMatch(releaseInfo ?? '');
+  return match?.group(0) ?? '';
+}
+
 String _timeLeft(WatchHistoryItem item) {
   final int remainingMs = (item.duration - item.currentTime).clamp(
     0,
@@ -1646,6 +1521,205 @@ class _CatalogRail extends StatelessWidget {
             onTap: () => onOpen(item),
           );
         },
+      ),
+    );
+  }
+}
+
+class _CatalogGridScreen extends StatelessWidget {
+  const _CatalogGridScreen({
+    required this.row,
+    required this.addonsService,
+    required this.settings,
+    required this.accent,
+    required this.onOpen,
+  });
+
+  final AddonCatalogRow row;
+  final StremioAddonsService addonsService;
+  final AppSettings settings;
+  final Color accent;
+  final ValueChanged<AddonCatalogItem> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<AddonCatalogItem> items = row.items;
+    return Scaffold(
+      backgroundColor: LayoutOptions.backgroundFor(settings),
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: <Widget>[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    _RoundBackButton(accent: accent),
+                    const SizedBox(height: 30),
+                    Text(
+                      '${row.catalogName} - ${_catalogTypeTitle(row.catalog.type)}',
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 36,
+                        height: 0.98,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: -1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      row.addonName,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (items.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Text(
+                    'No titles found.',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 96),
+                sliver: SliverGrid.builder(
+                  itemCount: items.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 28,
+                    childAspectRatio: 0.48,
+                  ),
+                  itemBuilder: (BuildContext context, int index) {
+                    final AddonCatalogItem item = items[index];
+                    final String posterUrl = addonsService.resolveAddonUrl(
+                      row.addon,
+                      item.poster,
+                    );
+                    return _CatalogGridCard(
+                      item: item,
+                      posterUrl: posterUrl,
+                      accent: accent,
+                      onTap: () => onOpen(item),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundBackButton extends StatelessWidget {
+  const _RoundBackButton({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withOpacity(0.06),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => Navigator.of(context).maybePop(),
+        child: SizedBox(
+          width: 54,
+          height: 54,
+          child: Icon(Icons.arrow_back_rounded, color: accent, size: 28),
+        ),
+      ),
+    );
+  }
+}
+
+class _CatalogGridCard extends StatelessWidget {
+  const _CatalogGridCard({
+    required this.item,
+    required this.posterUrl,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final AddonCatalogItem item;
+  final String posterUrl;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Expanded(
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: posterUrl.isEmpty
+                  ? const ColoredBox(color: AppColors.cardBackground)
+                  : Image.network(
+                      posterUrl,
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (
+                        BuildContext context,
+                        Object error,
+                        StackTrace? stackTrace,
+                      ) {
+                        return const ColoredBox(
+                          color: AppColors.cardBackground,
+                        );
+                      },
+                    ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            item.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 15,
+              height: 1.08,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _gridYear(item.releaseInfo),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

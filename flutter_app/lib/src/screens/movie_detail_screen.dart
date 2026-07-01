@@ -3,8 +3,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/favorite_item.dart';
 import '../models/tmdb_media_models.dart';
+import '../models/torbox_models.dart';
 import '../services/favorites_repository.dart';
 import '../services/mdblist_api_service.dart';
+import '../services/stremio_addons_service.dart';
 import '../services/tmdb_image.dart';
 import '../services/tmdb_media_service.dart';
 import '../theme/app_colors.dart';
@@ -26,9 +28,11 @@ class MovieDetailScreen extends StatefulWidget {
     this.fallbackReleaseInfo,
     this.fallbackSourceName,
     MediaCatalogService? mediaService,
+    StremioAddonsService? addonsService,
     MdbListApiService? mdbListApiService,
     FavoritesRepository? favoritesRepository,
   })  : mediaService = mediaService ?? TmdbMediaService(),
+        addonsService = addonsService ?? StremioAddonsService(),
         mdbListApiService = mdbListApiService ?? MdbListApiService(),
         favoritesRepository = favoritesRepository ?? FavoritesRepository();
 
@@ -42,6 +46,7 @@ class MovieDetailScreen extends StatefulWidget {
   final String? fallbackReleaseInfo;
   final String? fallbackSourceName;
   final MediaCatalogService mediaService;
+  final StremioAddonsService addonsService;
   final MdbListApiService mdbListApiService;
   final FavoritesRepository favoritesRepository;
 
@@ -135,6 +140,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
     final String externalId = (widget.externalId ?? '').trim();
     if (externalId.isNotEmpty) {
+      final MediaDetail? addonDetail = await _fetchAddonDetail(externalId);
+      if (addonDetail != null) {
+        return addonDetail;
+      }
+
       try {
         final MediaDetail? detail = await widget.mediaService
             .findMediaByExternalId(externalId, widget.mediaType);
@@ -155,6 +165,75 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       return fallback;
     }
     throw StateError('No metadata source was available for this title.');
+  }
+
+  Future<MediaDetail?> _fetchAddonDetail(String externalId) async {
+    try {
+      final AddonMetaItem? meta = await widget.addonsService.fetchMetadata(
+        mediaType: widget.mediaType,
+        id: externalId,
+      );
+      if (meta == null) {
+        return null;
+      }
+      return _detailFromAddonMeta(meta, externalId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  MediaDetail _detailFromAddonMeta(AddonMetaItem meta, String externalId) {
+    final String fallbackTitle = (widget.fallbackTitle ?? '').trim();
+    final String title = meta.name.trim().isNotEmpty
+        ? meta.name.trim()
+        : fallbackTitle.isNotEmpty
+            ? fallbackTitle
+            : externalId;
+
+    return MediaDetail(
+      id: widget.id,
+      mediaType: meta.mediaType == 'tv' ? 'tv' : widget.mediaType,
+      title: title,
+      overview: (meta.description ?? widget.fallbackOverview ?? '').trim(),
+      posterPath: meta.poster ?? widget.fallbackPosterPath,
+      backdropPath:
+          meta.background ?? widget.fallbackBackdropPath ?? meta.poster,
+      logoPath: meta.logo,
+      voteAverage: 0,
+      voteCount: 0,
+      releaseDate: _releaseDateFromInfo(
+        meta.releaseInfo ?? widget.fallbackReleaseInfo,
+      ),
+      runtimeMinutes: _runtimeMinutesFromAddon(meta.runtime),
+      genres: meta.genres
+          .map((String genre) => GenreItem(id: 0, name: genre))
+          .toList(growable: false),
+      seasons: const <SeasonSummary>[],
+      numberOfSeasons: 0,
+      networks: widget.fallbackSourceName == null
+          ? const <NetworkItem>[]
+          : <NetworkItem>[
+              NetworkItem(id: 0, name: widget.fallbackSourceName!),
+            ],
+      imdbId: externalId,
+      cast: meta.cast
+          .asMap()
+          .entries
+          .map(
+            (MapEntry<int, String> entry) => CastItem(
+              id: entry.key,
+              name: entry.value,
+              character: '',
+              profilePath: null,
+            ),
+          )
+          .toList(growable: false),
+      similarItems: const <MediaSummary>[],
+      director: meta.director ?? widget.fallbackSourceName,
+      originalLanguage: meta.language,
+      status: meta.status,
+      country: meta.country,
+    );
   }
 
   MediaDetail? _fallbackDetail() {
@@ -1070,7 +1149,7 @@ class _DetailsTable extends StatelessWidget {
         _year(detail.releaseDate),
       ),
       _DetailPair('Runtime', _formatRuntime(detail.runtimeMinutes)),
-      _DetailPair('Origin Country', detail.country ?? ''),
+      _DetailPair('Origin', _compactCountry(detail.country ?? '')),
       _DetailPair('Language', (detail.originalLanguage ?? '').toUpperCase()),
       _DetailPair('Status', detail.status ?? ''),
     ].where((_DetailPair row) => row.value.trim().isNotEmpty).toList();
@@ -1110,7 +1189,7 @@ class _DetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 17),
+      padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
@@ -1120,27 +1199,28 @@ class _DetailRow extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          Expanded(
+          SizedBox(
+            width: 118,
             child: Text(
               label,
               style: const TextStyle(
                 color: AppColors.textMuted,
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          Flexible(
+          const SizedBox(width: 12),
+          Expanded(
             child: Text(
               value,
               textAlign: TextAlign.right,
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: AppColors.text,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
@@ -1455,6 +1535,33 @@ String _year(String date) => date.isEmpty ? '' : date.split('-').first;
 String _releaseDateFromInfo(String? value) {
   final RegExpMatch? match = RegExp(r'(19|20)\d{2}').firstMatch(value ?? '');
   return match == null ? '' : '${match.group(0)}-01-01';
+}
+
+int _runtimeMinutesFromAddon(String? value) {
+  final String text = (value ?? '').toLowerCase();
+  if (text.trim().isEmpty) {
+    return 0;
+  }
+  final RegExpMatch? hourMinute =
+      RegExp(r'(\d+)\s*h(?:ours?)?\s*(\d+)?\s*m?').firstMatch(text);
+  if (hourMinute != null) {
+    final int hours = int.tryParse(hourMinute.group(1) ?? '') ?? 0;
+    final int minutes = int.tryParse(hourMinute.group(2) ?? '') ?? 0;
+    return hours * 60 + minutes;
+  }
+  final RegExpMatch? minutesOnly = RegExp(r'(\d+)\s*m').firstMatch(text);
+  if (minutesOnly != null) {
+    return int.tryParse(minutesOnly.group(1) ?? '') ?? 0;
+  }
+  return int.tryParse(text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+}
+
+String _compactCountry(String value) {
+  return value
+      .replaceAll('United States of America', 'United States')
+      .replaceAll('United Kingdom of Great Britain and Northern Ireland',
+          'United Kingdom')
+      .trim();
 }
 
 String _formatRuntime(int minutes) {

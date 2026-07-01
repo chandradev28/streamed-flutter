@@ -28,18 +28,6 @@ class AppSettings {
     this.mdbListTraktEnabled = true,
     this.mdbListLetterboxdEnabled = true,
     this.mdbListAudienceScoreEnabled = true,
-    this.traktClientId,
-    this.traktClientSecret,
-    this.traktAccessToken,
-    this.traktRefreshToken,
-    this.traktTokenExpiresAt,
-    this.traktUsername,
-    this.traktScrobbleEnabled = true,
-    this.traktSyncWatchlistEnabled = true,
-    this.traktSyncProgressEnabled = true,
-    this.traktSyncHistoryEnabled = true,
-    this.traktSyncListsEnabled = false,
-    this.traktLastSyncAt,
     this.layoutTheme = 'white',
     this.amoledBlackEnabled = true,
     this.continueWatchingEnabled = true,
@@ -66,6 +54,10 @@ class AppSettings {
     this.playbackPreferredSubtitleLanguage = 'en',
     this.playbackSecondarySubtitleLanguage = '',
     this.playbackPreferredAudioLanguage = '',
+    this.playbackSecondaryAudioLanguage = '',
+    this.playbackUseForcedSubtitles = false,
+    this.playbackShowOnlyPreferredLanguages = false,
+    this.playbackAddonSubtitleStartup = 'all',
     this.playbackShowFilesButton = true,
     this.playbackShowSubtitlesButton = true,
     this.playbackShowAudioButton = true,
@@ -105,18 +97,6 @@ class AppSettings {
   final bool mdbListTraktEnabled;
   final bool mdbListLetterboxdEnabled;
   final bool mdbListAudienceScoreEnabled;
-  final String? traktClientId;
-  final String? traktClientSecret;
-  final String? traktAccessToken;
-  final String? traktRefreshToken;
-  final int? traktTokenExpiresAt;
-  final String? traktUsername;
-  final bool traktScrobbleEnabled;
-  final bool traktSyncWatchlistEnabled;
-  final bool traktSyncProgressEnabled;
-  final bool traktSyncHistoryEnabled;
-  final bool traktSyncListsEnabled;
-  final int? traktLastSyncAt;
   final String layoutTheme;
   final bool amoledBlackEnabled;
   final bool continueWatchingEnabled;
@@ -143,6 +123,10 @@ class AppSettings {
   final String playbackPreferredSubtitleLanguage;
   final String playbackSecondarySubtitleLanguage;
   final String playbackPreferredAudioLanguage;
+  final String playbackSecondaryAudioLanguage;
+  final bool playbackUseForcedSubtitles;
+  final bool playbackShowOnlyPreferredLanguages;
+  final String playbackAddonSubtitleStartup;
   final bool playbackShowFilesButton;
   final bool playbackShowSubtitlesButton;
   final bool playbackShowAudioButton;
@@ -186,20 +170,6 @@ class AppSettings {
     bool? mdbListTraktEnabled,
     bool? mdbListLetterboxdEnabled,
     bool? mdbListAudienceScoreEnabled,
-    String? traktClientId,
-    String? traktClientSecret,
-    String? traktAccessToken,
-    String? traktRefreshToken,
-    int? traktTokenExpiresAt,
-    String? traktUsername,
-    bool clearTraktClientSecret = false,
-    bool clearTraktToken = false,
-    bool? traktScrobbleEnabled,
-    bool? traktSyncWatchlistEnabled,
-    bool? traktSyncProgressEnabled,
-    bool? traktSyncHistoryEnabled,
-    bool? traktSyncListsEnabled,
-    int? traktLastSyncAt,
     String? layoutTheme,
     bool? amoledBlackEnabled,
     bool? continueWatchingEnabled,
@@ -226,6 +196,10 @@ class AppSettings {
     String? playbackPreferredSubtitleLanguage,
     String? playbackSecondarySubtitleLanguage,
     String? playbackPreferredAudioLanguage,
+    String? playbackSecondaryAudioLanguage,
+    bool? playbackUseForcedSubtitles,
+    bool? playbackShowOnlyPreferredLanguages,
+    String? playbackAddonSubtitleStartup,
     bool? playbackShowFilesButton,
     bool? playbackShowSubtitlesButton,
     bool? playbackShowAudioButton,
@@ -279,30 +253,6 @@ class AppSettings {
           mdbListLetterboxdEnabled ?? this.mdbListLetterboxdEnabled,
       mdbListAudienceScoreEnabled:
           mdbListAudienceScoreEnabled ?? this.mdbListAudienceScoreEnabled,
-      traktClientId: traktClientId ?? this.traktClientId,
-      traktClientSecret: clearTraktClientSecret
-          ? null
-          : (traktClientSecret ?? this.traktClientSecret),
-      traktAccessToken:
-          clearTraktToken ? null : (traktAccessToken ?? this.traktAccessToken),
-      traktRefreshToken: clearTraktToken
-          ? null
-          : (traktRefreshToken ?? this.traktRefreshToken),
-      traktTokenExpiresAt: clearTraktToken
-          ? null
-          : (traktTokenExpiresAt ?? this.traktTokenExpiresAt),
-      traktUsername:
-          clearTraktToken ? null : (traktUsername ?? this.traktUsername),
-      traktScrobbleEnabled: traktScrobbleEnabled ?? this.traktScrobbleEnabled,
-      traktSyncWatchlistEnabled:
-          traktSyncWatchlistEnabled ?? this.traktSyncWatchlistEnabled,
-      traktSyncProgressEnabled:
-          traktSyncProgressEnabled ?? this.traktSyncProgressEnabled,
-      traktSyncHistoryEnabled:
-          traktSyncHistoryEnabled ?? this.traktSyncHistoryEnabled,
-      traktSyncListsEnabled:
-          traktSyncListsEnabled ?? this.traktSyncListsEnabled,
-      traktLastSyncAt: traktLastSyncAt ?? this.traktLastSyncAt,
       layoutTheme: layoutTheme ?? this.layoutTheme,
       amoledBlackEnabled: amoledBlackEnabled ?? this.amoledBlackEnabled,
       continueWatchingEnabled:
@@ -345,6 +295,14 @@ class AppSettings {
           this.playbackSecondarySubtitleLanguage,
       playbackPreferredAudioLanguage:
           playbackPreferredAudioLanguage ?? this.playbackPreferredAudioLanguage,
+      playbackSecondaryAudioLanguage:
+          playbackSecondaryAudioLanguage ?? this.playbackSecondaryAudioLanguage,
+      playbackUseForcedSubtitles:
+          playbackUseForcedSubtitles ?? this.playbackUseForcedSubtitles,
+      playbackShowOnlyPreferredLanguages: playbackShowOnlyPreferredLanguages ??
+          this.playbackShowOnlyPreferredLanguages,
+      playbackAddonSubtitleStartup:
+          playbackAddonSubtitleStartup ?? this.playbackAddonSubtitleStartup,
       playbackShowFilesButton:
           playbackShowFilesButton ?? this.playbackShowFilesButton,
       playbackShowSubtitlesButton:
@@ -401,20 +359,6 @@ class AppSettings {
           json['mdbListLetterboxdEnabled'] as bool? ?? true,
       mdbListAudienceScoreEnabled:
           json['mdbListAudienceScoreEnabled'] as bool? ?? true,
-      traktClientId: json['traktClientId'] as String?,
-      traktClientSecret: json['traktClientSecret'] as String?,
-      traktAccessToken: json['traktAccessToken'] as String?,
-      traktRefreshToken: json['traktRefreshToken'] as String?,
-      traktTokenExpiresAt: (json['traktTokenExpiresAt'] as num?)?.toInt(),
-      traktUsername: json['traktUsername'] as String?,
-      traktScrobbleEnabled: json['traktScrobbleEnabled'] as bool? ?? true,
-      traktSyncWatchlistEnabled:
-          json['traktSyncWatchlistEnabled'] as bool? ?? true,
-      traktSyncProgressEnabled:
-          json['traktSyncProgressEnabled'] as bool? ?? true,
-      traktSyncHistoryEnabled: json['traktSyncHistoryEnabled'] as bool? ?? true,
-      traktSyncListsEnabled: json['traktSyncListsEnabled'] as bool? ?? false,
-      traktLastSyncAt: (json['traktLastSyncAt'] as num?)?.toInt(),
       layoutTheme: json['layoutTheme'] as String? ?? 'white',
       amoledBlackEnabled: json['amoledBlackEnabled'] as bool? ?? true,
       continueWatchingEnabled: json['continueWatchingEnabled'] as bool? ?? true,
@@ -452,6 +396,14 @@ class AppSettings {
           json['playbackSecondarySubtitleLanguage'] as String? ?? '',
       playbackPreferredAudioLanguage:
           json['playbackPreferredAudioLanguage'] as String? ?? '',
+      playbackSecondaryAudioLanguage:
+          json['playbackSecondaryAudioLanguage'] as String? ?? '',
+      playbackUseForcedSubtitles:
+          json['playbackUseForcedSubtitles'] as bool? ?? false,
+      playbackShowOnlyPreferredLanguages:
+          json['playbackShowOnlyPreferredLanguages'] as bool? ?? false,
+      playbackAddonSubtitleStartup:
+          json['playbackAddonSubtitleStartup'] as String? ?? 'all',
       playbackShowFilesButton: json['playbackShowFilesButton'] as bool? ?? true,
       playbackShowSubtitlesButton:
           json['playbackShowSubtitlesButton'] as bool? ?? true,
@@ -499,18 +451,6 @@ class AppSettings {
       'mdbListTraktEnabled': mdbListTraktEnabled,
       'mdbListLetterboxdEnabled': mdbListLetterboxdEnabled,
       'mdbListAudienceScoreEnabled': mdbListAudienceScoreEnabled,
-      'traktClientId': traktClientId,
-      'traktClientSecret': traktClientSecret,
-      'traktAccessToken': traktAccessToken,
-      'traktRefreshToken': traktRefreshToken,
-      'traktTokenExpiresAt': traktTokenExpiresAt,
-      'traktUsername': traktUsername,
-      'traktScrobbleEnabled': traktScrobbleEnabled,
-      'traktSyncWatchlistEnabled': traktSyncWatchlistEnabled,
-      'traktSyncProgressEnabled': traktSyncProgressEnabled,
-      'traktSyncHistoryEnabled': traktSyncHistoryEnabled,
-      'traktSyncListsEnabled': traktSyncListsEnabled,
-      'traktLastSyncAt': traktLastSyncAt,
       'layoutTheme': layoutTheme,
       'amoledBlackEnabled': amoledBlackEnabled,
       'continueWatchingEnabled': continueWatchingEnabled,
@@ -538,6 +478,10 @@ class AppSettings {
       'playbackPreferredSubtitleLanguage': playbackPreferredSubtitleLanguage,
       'playbackSecondarySubtitleLanguage': playbackSecondarySubtitleLanguage,
       'playbackPreferredAudioLanguage': playbackPreferredAudioLanguage,
+      'playbackSecondaryAudioLanguage': playbackSecondaryAudioLanguage,
+      'playbackUseForcedSubtitles': playbackUseForcedSubtitles,
+      'playbackShowOnlyPreferredLanguages': playbackShowOnlyPreferredLanguages,
+      'playbackAddonSubtitleStartup': playbackAddonSubtitleStartup,
       'playbackShowFilesButton': playbackShowFilesButton,
       'playbackShowSubtitlesButton': playbackShowSubtitlesButton,
       'playbackShowAudioButton': playbackShowAudioButton,
@@ -899,6 +843,64 @@ class AddonCatalogItem {
   }
 }
 
+class AddonMetaItem {
+  const AddonMetaItem({
+    required this.id,
+    required this.type,
+    required this.name,
+    this.poster,
+    this.background,
+    this.logo,
+    this.description,
+    this.releaseInfo,
+    this.runtime,
+    this.genres = const <String>[],
+    this.cast = const <String>[],
+    this.director,
+    this.country,
+    this.language,
+    this.status,
+  });
+
+  final String id;
+  final String type;
+  final String name;
+  final String? poster;
+  final String? background;
+  final String? logo;
+  final String? description;
+  final String? releaseInfo;
+  final String? runtime;
+  final List<String> genres;
+  final List<String> cast;
+  final String? director;
+  final String? country;
+  final String? language;
+  final String? status;
+
+  String get mediaType => type == 'series' ? 'tv' : type;
+
+  factory AddonMetaItem.fromJson(Map<String, dynamic> json) {
+    return AddonMetaItem(
+      id: (json['id'] as String?) ?? '',
+      type: (json['type'] as String?) ?? '',
+      name: (json['name'] as String?) ?? '',
+      poster: json['poster'] as String?,
+      background: json['background'] as String?,
+      logo: json['logo'] as String?,
+      description: _readString(json['description']),
+      releaseInfo: _readString(json['releaseInfo']),
+      runtime: _readString(json['runtime']),
+      genres: _readStringList(json['genres']),
+      cast: _readStringList(json['cast']),
+      director: _readStringList(json['director']).join(', '),
+      country: _readStringList(json['country']).join(', '),
+      language: _readString(json['language']),
+      status: _readString(json['status']),
+    );
+  }
+}
+
 class AddonCatalogRow {
   const AddonCatalogRow({
     required this.addonName,
@@ -1024,6 +1026,10 @@ class AddonManifest {
         (AddonResource resource) => resource.name == 'subtitles',
       );
 
+  bool get hasMetaResource => resources.any(
+        (AddonResource resource) => resource.name == 'meta',
+      );
+
   List<String> get supportedMediaTypes {
     final Set<String> values = <String>{};
     for (final String type in types) {
@@ -1070,6 +1076,38 @@ class AddonManifest {
     }
 
     return streamResources.isEmpty;
+  }
+
+  bool supportsMeta(String mediaType, String id) {
+    final String stremioType = mediaType == 'tv' ? 'series' : mediaType;
+    if (!hasMetaResource) {
+      return catalogs
+          .any((AddonCatalog catalog) => catalog.type == stremioType);
+    }
+
+    if (idPrefixes.isNotEmpty &&
+        !idPrefixes.any((String prefix) => id.startsWith(prefix))) {
+      return false;
+    }
+
+    final Iterable<AddonResource> metaResources = resources.where(
+      (AddonResource resource) => resource.name == 'meta',
+    );
+    for (final AddonResource resource in metaResources) {
+      if (resource.types.isNotEmpty &&
+          !resource.types.contains(stremioType) &&
+          !(stremioType == 'series' && resource.types.contains('tv'))) {
+        continue;
+      }
+
+      if (resource.idPrefixes.isNotEmpty &&
+          !resource.idPrefixes.any((String prefix) => id.startsWith(prefix))) {
+        continue;
+      }
+
+      return true;
+    }
+    return false;
   }
 
   factory AddonManifest.fromJson(Map<String, dynamic> json) {
@@ -1257,6 +1295,17 @@ int? _readInt(dynamic value) {
 String? _readString(dynamic value) {
   final String text = value?.toString().trim() ?? '';
   return text.isEmpty ? null : text;
+}
+
+List<String> _readStringList(dynamic value) {
+  if (value is List<dynamic>) {
+    return value
+        .map((dynamic item) => item.toString().trim())
+        .where((String item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+  final String? single = _readString(value);
+  return single == null ? const <String>[] : <String>[single];
 }
 
 class MagnetHistoryItem {

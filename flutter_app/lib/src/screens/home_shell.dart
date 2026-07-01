@@ -6,7 +6,7 @@ import '../theme/app_colors.dart';
 import '../theme/layout_options.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
-import 'playlist_screen.dart';
+import 'profile_screen.dart';
 import 'search_screen.dart';
 
 class HomeShell extends StatefulWidget {
@@ -67,12 +67,6 @@ class _HomeShellState extends State<HomeShell> {
         ),
       ),
       _ShellTab(
-        label: 'Playlist',
-        icon: Icons.movie_outlined,
-        activeIcon: Icons.movie,
-        builder: (_) => const PlaylistScreen(),
-      ),
-      _ShellTab(
         label: 'Search',
         icon: Icons.search_outlined,
         activeIcon: Icons.search,
@@ -83,6 +77,12 @@ class _HomeShellState extends State<HomeShell> {
         icon: Icons.favorite_border,
         activeIcon: Icons.favorite,
         builder: (_) => LibraryScreen(),
+      ),
+      _ShellTab(
+        label: 'Settings',
+        icon: Icons.person_outline_rounded,
+        activeIcon: Icons.person_rounded,
+        builder: (_) => ProfileScreen(showBackButton: false),
       ),
     ];
 

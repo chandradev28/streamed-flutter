@@ -12,7 +12,6 @@ import '../models/watch_history_item.dart';
 import '../services/app_settings_repository.dart';
 import '../services/episode_parser.dart';
 import '../services/torbox_api_service.dart';
-import '../services/trakt_api_service.dart';
 import '../services/watch_history_repository.dart';
 import '../theme/app_colors.dart';
 
@@ -39,11 +38,9 @@ class VideoPlayerScreen extends StatefulWidget {
     this.streamHeaders = const <String, String>{},
     AppSettingsRepository? settingsRepository,
     TorBoxApiService? torBoxApiService,
-    TraktApiService? traktApiService,
     ContinueWatchingRepository? watchHistoryRepository,
   })  : settingsRepository = settingsRepository ?? AppSettingsRepository(),
         torBoxApiService = torBoxApiService ?? TorBoxApiService(),
-        traktApiService = traktApiService ?? TraktApiService(),
         watchHistoryRepository =
             watchHistoryRepository ?? WatchHistoryRepository();
 
@@ -67,7 +64,6 @@ class VideoPlayerScreen extends StatefulWidget {
   final Map<String, String> streamHeaders;
   final AppSettingsRepository settingsRepository;
   final TorBoxApiService torBoxApiService;
-  final TraktApiService traktApiService;
   final ContinueWatchingRepository watchHistoryRepository;
 
   @override
@@ -103,8 +99,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _settingsLoaded = false;
   bool _externalOpenedAutomatically = false;
   bool _autoNextStarted = false;
-  bool _traktStarted = false;
-  int _lastTraktPauseSecond = -1;
 
   @override
   void initState() {
@@ -390,7 +384,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _progressTimer?.cancel();
       previousController?.removeListener(_handleControllerTick);
       await previousController?.dispose();
-      _traktStarted = false;
 
       nextController = VideoPlayerController.networkUrl(
         Uri.parse(url),
@@ -409,7 +402,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       if (_settings.playbackAutoPlay) {
         await nextController.play();
-        unawaited(_scrobbleStart());
       }
 
       nextController.addListener(_handleControllerTick);
@@ -430,12 +422,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _showControls = true;
         _duration = nextController!.value.duration;
         _position = nextController.value.position;
+        _subtitlesVisible = _settings.playbackAddonSubtitleStartup != 'off';
       });
       await _refreshMediaTracks();
+      _applyTrackPreferences();
       unawaited(
         Future<void>.delayed(
           const Duration(milliseconds: 500),
-          _refreshMediaTracks,
+          () async {
+            await _refreshMediaTracks();
+            _applyTrackPreferences();
+          },
         ),
       );
     } catch (error) {
@@ -502,7 +499,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     if (value.isCompleted) {
       unawaited(_persistProgress(forceCompleted: true));
-      unawaited(_scrobbleStop());
       unawaited(_playNextEpisodeIfAllowed(force: true));
       return;
     }
@@ -522,7 +518,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         value.position.inSeconds % 10 == 0) {
       _lastPersistedSecond = value.position.inSeconds;
       unawaited(_persistProgress());
-      unawaited(_scrobblePause(throttled: true));
     }
   }
 
@@ -613,74 +608,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     ].join('_');
   }
 
-  Future<void> _scrobbleStart() async {
-    if (!_settings.traktScrobbleEnabled || _traktStarted) {
-      return;
-    }
-    final TraktScrobbleItem? item = _traktScrobbleItem();
-    if (item == null) {
-      return;
-    }
-    _traktStarted = true;
-    try {
-      await widget.traktApiService.scrobbleStart(item);
-    } catch (_) {}
-  }
-
-  Future<void> _scrobblePause({bool throttled = false}) async {
-    if (!_settings.traktScrobbleEnabled) {
-      return;
-    }
-    if (throttled &&
-        _position.inSeconds > 0 &&
-        _position.inSeconds - _lastTraktPauseSecond < 30) {
-      return;
-    }
-    final TraktScrobbleItem? item = _traktScrobbleItem();
-    if (item == null) {
-      return;
-    }
-    _lastTraktPauseSecond = _position.inSeconds;
-    try {
-      await widget.traktApiService.scrobblePause(item);
-    } catch (_) {}
-  }
-
-  Future<void> _scrobbleStop() async {
-    if (!_settings.traktScrobbleEnabled) {
-      return;
-    }
-    final TraktScrobbleItem? item = _traktScrobbleItem(forceProgress: 100);
-    if (item == null) {
-      return;
-    }
-    try {
-      await widget.traktApiService.scrobbleStop(item);
-    } catch (_) {}
-  }
-
-  TraktScrobbleItem? _traktScrobbleItem({double? forceProgress}) {
-    final int? tmdbId = widget.tmdbId;
-    final String? mediaType = widget.mediaType;
-    if (tmdbId == null || mediaType == null) {
-      return null;
-    }
-    final double progress = forceProgress ??
-        (_duration.inMilliseconds <= 0
-            ? 0
-            : ((_position.inMilliseconds / _duration.inMilliseconds) * 100)
-                .clamp(0, 100)
-                .toDouble());
-    return TraktScrobbleItem(
-      title: widget.title,
-      mediaType: mediaType,
-      tmdbId: tmdbId,
-      progress: progress,
-      seasonNumber: widget.seasonNumber,
-      episodeNumber: widget.episodeNumber,
-    );
-  }
-
   Future<void> _togglePlayPause() async {
     final VideoPlayerController? controller = _controller;
     if (controller == null) {
@@ -689,10 +616,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     if (controller.value.isPlaying) {
       await controller.pause();
-      unawaited(_scrobblePause());
     } else {
       await controller.play();
-      unawaited(_scrobbleStart());
     }
     if (!mounted) {
       return;
@@ -873,6 +798,38 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
+  void _applyTrackPreferences() {
+    if (!mounted) {
+      return;
+    }
+    if (_settings.playbackAddonSubtitleStartup == 'off') {
+      setState(() {
+        _subtitlesVisible = false;
+      });
+      return;
+    }
+
+    final List<int> preferredSubtitleTracks = _preferredTrackIndexes(
+      _subtitleTracks,
+      _preferredSubtitleCodes(),
+      preferForced: _settings.playbackUseForcedSubtitles,
+    );
+    final List<int> preferredAudioTracks = _preferredTrackIndexes(
+      _audioTracks,
+      _preferredAudioCodes(),
+    );
+
+    setState(() {
+      if (_settings.playbackAddonSubtitleStartup == 'preferred') {
+        _activeSubtitleTracks = preferredSubtitleTracks;
+        _subtitlesVisible = preferredSubtitleTracks.isNotEmpty;
+      }
+      if (preferredAudioTracks.isNotEmpty) {
+        _activeAudioTracks = preferredAudioTracks;
+      }
+    });
+  }
+
   Future<void> _toggleOrientation() async {
     await _enterLandscapeMode();
     _showFeatureMessage('The player stays locked to landscape while open.');
@@ -964,6 +921,100 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
+  List<String> _preferredAudioCodes() {
+    final List<String> codes = <String>[
+      _settings.playbackPreferredAudioLanguage,
+      _settings.playbackSecondaryAudioLanguage,
+    ]
+        .map((String value) => value.trim().toLowerCase())
+        .where((String value) => value.isNotEmpty)
+        .toList();
+    if (codes.isEmpty) {
+      final String deviceLanguage =
+          WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+      if (deviceLanguage.isNotEmpty) {
+        codes.add(deviceLanguage.toLowerCase());
+      }
+    }
+    return codes;
+  }
+
+  List<String> _preferredSubtitleCodes() {
+    return <String>[
+      _settings.playbackPreferredSubtitleLanguage,
+      _settings.playbackSecondarySubtitleLanguage,
+    ]
+        .map((String value) => value.trim().toLowerCase())
+        .where((String value) => value.isNotEmpty)
+        .toList();
+  }
+
+  List<dynamic> _visibleSubtitleTracks() {
+    final List<String> codes = _preferredSubtitleCodes();
+    if (!_settings.playbackShowOnlyPreferredLanguages || codes.isEmpty) {
+      return _subtitleTracks;
+    }
+    return _subtitleTracks
+        .where((dynamic track) => _trackMatchesLanguage(track, codes))
+        .toList(growable: false);
+  }
+
+  List<int> _preferredTrackIndexes(
+    List<dynamic> tracks,
+    List<String> languageCodes, {
+    bool preferForced = false,
+  }) {
+    if (tracks.isEmpty || languageCodes.isEmpty) {
+      return const <int>[];
+    }
+    final Iterable<dynamic> candidates = tracks
+        .where((dynamic track) => _trackMatchesLanguage(track, languageCodes));
+    if (preferForced) {
+      final dynamic forcedTrack = candidates.firstWhere(
+        (dynamic track) => _trackLooksForced(track),
+        orElse: () => null,
+      );
+      if (forcedTrack != null) {
+        return <int>[_trackIndex(forcedTrack)];
+      }
+    }
+    final dynamic firstTrack = candidates.firstWhere(
+      (dynamic track) => track != null,
+      orElse: () => null,
+    );
+    return firstTrack == null ? const <int>[] : <int>[_trackIndex(firstTrack)];
+  }
+
+  bool _trackMatchesLanguage(dynamic track, List<String> languageCodes) {
+    final String haystack = <String>[
+      _trackLabel(track, 'Track'),
+      _trackDetail(track),
+      _trackMetadata(track)
+          .values
+          .map((dynamic value) => value.toString())
+          .join(' '),
+    ].join(' ').toLowerCase();
+    return languageCodes.any((String code) {
+      if (code.isEmpty) {
+        return false;
+      }
+      final String label = _languageNameForCode(code).toLowerCase();
+      return haystack.contains(code) || haystack.contains(label);
+    });
+  }
+
+  bool _trackLooksForced(dynamic track) {
+    final String haystack = <String>[
+      _trackLabel(track, 'Track'),
+      _trackDetail(track),
+      _trackMetadata(track)
+          .values
+          .map((dynamic value) => value.toString())
+          .join(' '),
+    ].join(' ').toLowerCase();
+    return haystack.contains('forced') || haystack.contains('sdh');
+  }
+
   String _friendlyError(Object error) {
     final _PlaybackIssue issue = _describePlaybackIssue(error);
     return '${issue.title}. ${issue.body}';
@@ -1049,16 +1100,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _showSubtitleSheet() {
+    final List<dynamic> visibleTracks = _visibleSubtitleTracks();
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
       showDragHandle: true,
       builder: (BuildContext context) {
         return _SubtitleSheet(
-          tracks: _subtitleTracks,
+          tracks: visibleTracks,
           activeTracks: _activeSubtitleTracks,
           externalSubtitleName: _externalSubtitleName,
           subtitlesVisible: _subtitlesVisible,
+          emptyMessage: _subtitleTracks.isEmpty
+              ? 'No embedded subtitle tracks were exposed by this stream.'
+              : 'No subtitle tracks match your preferred languages.',
           onDisable: () async {
             Navigator.of(context).maybePop();
             await _selectSubtitleTrack(null);
@@ -1232,7 +1287,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void dispose() {
     unawaited(_persistProgress());
-    unawaited(_scrobblePause());
     _progressTimer?.cancel();
     _controller?.removeListener(_handleControllerTick);
     _controller?.dispose();
@@ -2268,6 +2322,7 @@ class _SubtitleSheet extends StatelessWidget {
     required this.activeTracks,
     required this.externalSubtitleName,
     required this.subtitlesVisible,
+    required this.emptyMessage,
     required this.onDisable,
     required this.onSelect,
     required this.onPickExternal,
@@ -2277,6 +2332,7 @@ class _SubtitleSheet extends StatelessWidget {
   final List<int> activeTracks;
   final String? externalSubtitleName;
   final bool subtitlesVisible;
+  final String emptyMessage;
   final Future<void> Function() onDisable;
   final ValueChanged<int> onSelect;
   final Future<void> Function() onPickExternal;
@@ -2325,11 +2381,12 @@ class _SubtitleSheet extends StatelessWidget {
             onTap: onPickExternal,
           ),
           if (tracks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 10),
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
               child: Text(
-                'No embedded subtitle tracks were exposed by this stream.',
-                style: TextStyle(color: AppColors.textMuted, height: 1.45),
+                emptyMessage,
+                style:
+                    const TextStyle(color: AppColors.textMuted, height: 1.45),
               ),
             )
           else ...<Widget>[
@@ -2417,6 +2474,43 @@ String? _metadataValue(Map<dynamic, dynamic> metadata, List<String> keys) {
     }
   }
   return null;
+}
+
+String _languageNameForCode(String code) {
+  switch (code.toLowerCase()) {
+    case 'en':
+      return 'English';
+    case 'hi':
+      return 'Hindi';
+    case 'ja':
+      return 'Japanese';
+    case 'es':
+      return 'Spanish';
+    case 'fr':
+      return 'French';
+    case 'de':
+      return 'German';
+    case 'it':
+      return 'Italian';
+    case 'pt':
+      return 'Portuguese';
+    case 'ru':
+      return 'Russian';
+    case 'ko':
+      return 'Korean';
+    case 'zh':
+      return 'Chinese';
+    case 'ar':
+      return 'Arabic';
+    case 'tr':
+      return 'Turkish';
+    case 'id':
+      return 'Indonesian';
+    case 'bn':
+      return 'Bengali';
+    default:
+      return code;
+  }
 }
 
 class _EpisodeGroupCard extends StatelessWidget {

@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../models/torbox_models.dart';
 import '../services/app_settings_repository.dart';
-import '../services/real_debrid_api_service.dart';
-import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/layout_options.dart';
 import 'addons_screen.dart';
@@ -12,20 +10,15 @@ import 'layout_screen.dart';
 import 'playback_screen.dart';
 import 'streams_screen.dart';
 import 'torboxers_screen.dart';
-import 'trakt_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   ProfileScreen({
     super.key,
-    TorBoxApiService? torBoxApiService,
-    RealDebridApiService? realDebridApiService,
+    this.showBackButton = true,
     AppSettingsRepository? settingsRepository,
-  })  : torBoxApiService = torBoxApiService ?? TorBoxApiService(),
-        realDebridApiService = realDebridApiService ?? RealDebridApiService(),
-        settingsRepository = settingsRepository ?? AppSettingsRepository();
+  }) : settingsRepository = settingsRepository ?? AppSettingsRepository();
 
-  final TorBoxApiService torBoxApiService;
-  final RealDebridApiService realDebridApiService;
+  final bool showBackButton;
   final AppSettingsRepository settingsRepository;
 
   @override
@@ -119,14 +112,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _openTrakt() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => TraktScreen(),
-      ),
-    );
-  }
-
   bool _matchesSettingsSearch(String value) {
     final String query = _searchController.text.trim().toLowerCase();
     return query.isEmpty || value.toLowerCase().contains(query);
@@ -140,9 +125,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool showAccount = _matchesSettingsSearch(
-      'account profile trakt sync switch',
-    );
+    final bool showAccount = _matchesSettingsSearch('account profile switch');
     final bool showGeneral = _matchesSettingsSearch(
       'general layout content discovery addons downloads playback streams badges integrations notifications torboxers',
     );
@@ -158,11 +141,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: <Widget>[
             Row(
               children: <Widget>[
-                IconButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  icon: Icon(Icons.arrow_back_rounded, color: _accent),
-                ),
-                const SizedBox(width: 6),
+                if (widget.showBackButton) ...<Widget>[
+                  IconButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: Icon(Icons.arrow_back_rounded, color: _accent),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 const Expanded(
                   child: Text(
                     'Settings',
@@ -215,13 +200,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     subtitle: 'Account and sync status',
                     accent: _accent,
                     onTap: () => _showPlaceholder('Account'),
-                  ),
-                  _SettingsActionTile(
-                    icon: Icons.checklist_rtl_rounded,
-                    title: 'Trakt',
-                    subtitle: 'Open Trakt connection screen',
-                    accent: _accent,
-                    onTap: _openTrakt,
                   ),
                 ],
               ),

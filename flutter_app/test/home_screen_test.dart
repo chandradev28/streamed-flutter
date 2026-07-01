@@ -51,9 +51,11 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey<String>('home-profile-button')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('Streamed'), findsOneWidget);
+    expect(find.text('Streamed'), findsNothing);
+    expect(find.text('Powered by your Stremio addons'), findsNothing);
+    expect(find.text('View Details'), findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.text('Continue Watching'),
@@ -78,7 +80,7 @@ void main() {
     );
 
     expect(find.text('Featured Movies'), findsOneWidget);
-    expect(find.text('AIOStreams'), findsWidgets);
+    expect(find.text('View All'), findsWidgets);
     expect(find.text('Addon Poster One'), findsWidgets);
   });
 
@@ -103,6 +105,35 @@ void main() {
     expect(find.text('Manage addons'), findsOneWidget);
     expect(find.text('Top 10 Movies This Week'), findsNothing);
     expect(find.text('New Releases'), findsNothing);
+  });
+
+  testWidgets('view all opens addon catalog grid', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          mediaService: const FakeMediaService(),
+          settingsRepository: FakeAppSettingsRepository(),
+          addonsService: _FakeAddonsService.withCatalogs(),
+          watchHistoryRepository: const FakeWatchHistoryRepository(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.scrollUntilVisible(
+      find.text('Featured Movies'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('View All'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Featured Movies - Movies'), findsOneWidget);
+    expect(find.text('AIOStreams'), findsOneWidget);
+    expect(find.text('Addon Poster One'), findsOneWidget);
+    expect(find.text('2026'), findsOneWidget);
   });
 }
 
@@ -187,9 +218,6 @@ class _FakeAddonsService extends StremioAddonsService {
 
   @override
   String resolveAddonUrl(AddonManifest addon, String? raw) {
-    if (raw == null || raw.isEmpty) {
-      return '';
-    }
-    return raw.startsWith('http') ? raw : '${addon.url}$raw';
+    return '';
   }
 }

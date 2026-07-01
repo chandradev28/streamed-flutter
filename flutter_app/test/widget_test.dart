@@ -28,8 +28,8 @@ void main() {
       find.byKey(const ValueKey<String>('home-menu-button')),
       findsNothing,
     );
-    expect(find.text('Streamed'), findsOneWidget);
-    expect(find.text('Powered by your Stremio addons'), findsOneWidget);
+    expect(find.text('Streamed'), findsNothing);
+    expect(find.text('Powered by your Stremio addons'), findsNothing);
     expect(find.text('Add your first catalog addon'), findsOneWidget);
     expect(find.text('Top 10 Movies This Week'), findsNothing);
     expect(find.text('New Releases'), findsNothing);

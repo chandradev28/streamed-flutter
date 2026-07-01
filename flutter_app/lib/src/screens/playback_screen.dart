@@ -18,13 +18,6 @@ class PlaybackScreen extends StatefulWidget {
 }
 
 class _PlaybackScreenState extends State<PlaybackScreen> {
-  final TextEditingController _subtitleLanguageController =
-      TextEditingController();
-  final TextEditingController _secondarySubtitleLanguageController =
-      TextEditingController();
-  final TextEditingController _audioLanguageController =
-      TextEditingController();
-
   AppSettings _settings = const AppSettings();
   bool _loading = true;
 
@@ -36,32 +29,15 @@ class _PlaybackScreenState extends State<PlaybackScreen> {
     _load();
   }
 
-  @override
-  void dispose() {
-    _subtitleLanguageController.dispose();
-    _secondarySubtitleLanguageController.dispose();
-    _audioLanguageController.dispose();
-    super.dispose();
-  }
-
   Future<void> _load() async {
     final AppSettings settings = await widget.settingsRepository.loadSettings();
     if (!mounted) {
       return;
     }
-    _syncControllers(settings);
     setState(() {
       _settings = settings;
       _loading = false;
     });
-  }
-
-  void _syncControllers(AppSettings settings) {
-    _subtitleLanguageController.text =
-        settings.playbackPreferredSubtitleLanguage;
-    _secondarySubtitleLanguageController.text =
-        settings.playbackSecondarySubtitleLanguage;
-    _audioLanguageController.text = settings.playbackPreferredAudioLanguage;
   }
 
   Future<void> _save(AppSettings settings) async {
@@ -71,23 +47,65 @@ class _PlaybackScreenState extends State<PlaybackScreen> {
     await widget.settingsRepository.saveSettings(settings);
   }
 
-  Future<void> _saveLanguageFields() async {
-    await _save(
-      _settings.copyWith(
-        playbackPreferredSubtitleLanguage:
-            _subtitleLanguageController.text.trim().toLowerCase(),
-        playbackSecondarySubtitleLanguage:
-            _secondarySubtitleLanguageController.text.trim().toLowerCase(),
-        playbackPreferredAudioLanguage:
-            _audioLanguageController.text.trim().toLowerCase(),
-      ),
+  Future<void> _showLanguagePicker({
+    required String title,
+    required String value,
+    required String noneLabel,
+    required ValueChanged<String> onSelected,
+  }) async {
+    final String? selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      showDragHandle: true,
+      builder: (BuildContext context) {
+        return _LanguagePickerSheet(
+          title: title,
+          value: value,
+          noneLabel: noneLabel,
+          accent: _accent,
+        );
+      },
     );
-    if (!mounted) {
+    if (selected == null) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Playback language preferences saved.')),
+    onSelected(selected);
+  }
+
+  Future<void> _showSubtitleStartupPicker() async {
+    final String? selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      showDragHandle: true,
+      builder: (BuildContext context) {
+        return _SimpleChoiceSheet(
+          title: 'Addon Subtitle Startup',
+          value: _settings.playbackAddonSubtitleStartup,
+          accent: _accent,
+          choices: const <_ChoiceOption>[
+            _ChoiceOption(
+              value: 'all',
+              title: 'All subtitles',
+              subtitle: 'Show every subtitle track exposed by the stream.',
+            ),
+            _ChoiceOption(
+              value: 'preferred',
+              title: 'Preferred only',
+              subtitle: 'Start with your preferred subtitle language.',
+            ),
+            _ChoiceOption(
+              value: 'off',
+              title: 'Off',
+              subtitle: 'Keep subtitles disabled when playback starts.',
+            ),
+          ],
+        );
+      },
     );
+    if (selected == null) {
+      return;
+    }
+    await _save(_settings.copyWith(playbackAddonSubtitleStartup: selected));
   }
 
   @override
@@ -256,39 +274,105 @@ class _PlaybackScreenState extends State<PlaybackScreen> {
                   const _SectionLabel('SUBTITLE & AUDIO'),
                   _SettingsCard(
                     children: <Widget>[
-                      const Text(
-                        'Use short language codes like en, hi, ja, es. Track selection depends on what the stream exposes.',
-                        style: TextStyle(
-                          color: AppColors.textMuted,
-                          height: 1.4,
+                      _OptionRow(
+                        title: 'Preferred Audio Language',
+                        value: _languageLabel(
+                          _settings.playbackPreferredAudioLanguage,
+                          noneLabel: 'Device language',
                         ),
-                      ),
-                      const SizedBox(height: 14),
-                      _LanguageField(
-                        label: 'Preferred subtitle language',
-                        controller: _subtitleLanguageController,
-                      ),
-                      const SizedBox(height: 12),
-                      _LanguageField(
-                        label: 'Secondary subtitle language',
-                        controller: _secondarySubtitleLanguageController,
-                      ),
-                      const SizedBox(height: 12),
-                      _LanguageField(
-                        label: 'Preferred audio language',
-                        controller: _audioLanguageController,
-                      ),
-                      const SizedBox(height: 14),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: FilledButton(
-                          onPressed: _saveLanguageFields,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _accent,
-                            foregroundColor: AppColors.background,
+                        onTap: () => _showLanguagePicker(
+                          title: 'Preferred Audio Language',
+                          value: _settings.playbackPreferredAudioLanguage,
+                          noneLabel: 'Device language',
+                          onSelected: (String value) => _save(
+                            _settings.copyWith(
+                              playbackPreferredAudioLanguage: value,
+                            ),
                           ),
-                          child: const Text('Save languages'),
                         ),
+                      ),
+                      _OptionRow(
+                        title: 'Secondary Audio Language',
+                        value: _languageLabel(
+                          _settings.playbackSecondaryAudioLanguage,
+                          noneLabel: 'None',
+                        ),
+                        onTap: () => _showLanguagePicker(
+                          title: 'Secondary Audio Language',
+                          value: _settings.playbackSecondaryAudioLanguage,
+                          noneLabel: 'None',
+                          onSelected: (String value) => _save(
+                            _settings.copyWith(
+                              playbackSecondaryAudioLanguage: value,
+                            ),
+                          ),
+                        ),
+                      ),
+                      _OptionRow(
+                        title: 'Preferred Subtitle Language',
+                        value: _languageLabel(
+                          _settings.playbackPreferredSubtitleLanguage,
+                          noneLabel: 'None',
+                        ),
+                        onTap: () => _showLanguagePicker(
+                          title: 'Preferred Subtitle Language',
+                          value: _settings.playbackPreferredSubtitleLanguage,
+                          noneLabel: 'None',
+                          onSelected: (String value) => _save(
+                            _settings.copyWith(
+                              playbackPreferredSubtitleLanguage: value,
+                            ),
+                          ),
+                        ),
+                      ),
+                      _OptionRow(
+                        title: 'Secondary Subtitle Language',
+                        value: _languageLabel(
+                          _settings.playbackSecondarySubtitleLanguage,
+                          noneLabel: 'None',
+                        ),
+                        onTap: () => _showLanguagePicker(
+                          title: 'Secondary Subtitle Language',
+                          value: _settings.playbackSecondarySubtitleLanguage,
+                          noneLabel: 'None',
+                          onSelected: (String value) => _save(
+                            _settings.copyWith(
+                              playbackSecondarySubtitleLanguage: value,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      _ToggleRow(
+                        title: 'Use Forced Subtitles',
+                        subtitle:
+                            'Prefer forced subtitles when they match your subtitle language.',
+                        value: _settings.playbackUseForcedSubtitles,
+                        accent: _accent,
+                        onChanged: (bool value) => _save(
+                          _settings.copyWith(
+                            playbackUseForcedSubtitles: value,
+                          ),
+                        ),
+                      ),
+                      _ToggleRow(
+                        title: 'Show Only Preferred Languages',
+                        subtitle:
+                            'Only list subtitle tracks matching your preferred languages.',
+                        value: _settings.playbackShowOnlyPreferredLanguages,
+                        accent: _accent,
+                        onChanged: (bool value) => _save(
+                          _settings.copyWith(
+                            playbackShowOnlyPreferredLanguages: value,
+                          ),
+                        ),
+                      ),
+                      _OptionRow(
+                        title: 'Addon Subtitle Startup',
+                        value: _subtitleStartupLabel(
+                          _settings.playbackAddonSubtitleStartup,
+                        ),
+                        onTap: _showSubtitleStartupPicker,
                       ),
                     ],
                   ),
@@ -580,46 +664,268 @@ class _ChoiceRow<T> extends StatelessWidget {
   }
 }
 
-class _LanguageField extends StatelessWidget {
-  const _LanguageField({
-    required this.label,
-    required this.controller,
+String _speedLabel(double value) {
+  if (value == value.roundToDouble()) {
+    return '${value.toInt()}x';
+  }
+  return '${value.toStringAsFixed(2).replaceFirst(RegExp(r'0$'), '')}x';
+}
+
+class _OptionRow extends StatelessWidget {
+  const _OptionRow({
+    required this.title,
+    required this.value,
+    required this.onTap,
   });
 
-  final String label;
-  final TextEditingController controller;
+  final String title;
+  final String value;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      autocorrect: false,
-      enableSuggestions: false,
-      textCapitalization: TextCapitalization.none,
-      style: const TextStyle(color: AppColors.text),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: AppColors.textMuted),
-        hintText: 'en',
-        hintStyle: const TextStyle(color: AppColors.textSubtle),
-        filled: true,
-        fillColor: Colors.white.withOpacity(0.05),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.05)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.05)),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 16,
+                        height: 1.2,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      value,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 14,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textMuted,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-String _speedLabel(double value) {
-  if (value == value.roundToDouble()) {
-    return '${value.toInt()}x';
+class _LanguagePickerSheet extends StatelessWidget {
+  const _LanguagePickerSheet({
+    required this.title,
+    required this.value,
+    required this.noneLabel,
+    required this.accent,
+  });
+
+  final String title;
+  final String value;
+  final String noneLabel;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(22, 4, 22, 24),
+        children: <Widget>[
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _LanguageTile(
+            option: _LanguageOption('', noneLabel),
+            selected: value.isEmpty,
+            accent: accent,
+          ),
+          ..._languageOptions.map(
+            (_LanguageOption option) => _LanguageTile(
+              option: option,
+              selected: option.code == value,
+              accent: accent,
+            ),
+          ),
+        ],
+      ),
+    );
   }
-  return '${value.toStringAsFixed(2).replaceFirst(RegExp(r'0$'), '')}x';
+}
+
+class _LanguageTile extends StatelessWidget {
+  const _LanguageTile({
+    required this.option,
+    required this.selected,
+    required this.accent,
+  });
+
+  final _LanguageOption option;
+  final bool selected;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        option.label,
+        style: const TextStyle(
+          color: AppColors.text,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: option.code.isEmpty
+          ? null
+          : Text(
+              option.code,
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+      trailing: selected
+          ? Icon(Icons.check_rounded, color: accent)
+          : const SizedBox(width: 24),
+      onTap: () => Navigator.of(context).pop(option.code),
+    );
+  }
+}
+
+class _SimpleChoiceSheet extends StatelessWidget {
+  const _SimpleChoiceSheet({
+    required this.title,
+    required this.value,
+    required this.choices,
+    required this.accent,
+  });
+
+  final String title;
+  final String value;
+  final List<_ChoiceOption> choices;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(22, 4, 22, 24),
+        children: <Widget>[
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...choices.map(
+            (_ChoiceOption option) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                option.title,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              subtitle: Text(
+                option.subtitle,
+                style: const TextStyle(color: AppColors.textMuted),
+              ),
+              trailing: option.value == value
+                  ? Icon(Icons.check_rounded, color: accent)
+                  : const SizedBox(width: 24),
+              onTap: () => Navigator.of(context).pop(option.value),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LanguageOption {
+  const _LanguageOption(this.code, this.label);
+
+  final String code;
+  final String label;
+}
+
+class _ChoiceOption {
+  const _ChoiceOption({
+    required this.value,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String value;
+  final String title;
+  final String subtitle;
+}
+
+const List<_LanguageOption> _languageOptions = <_LanguageOption>[
+  _LanguageOption('en', 'English'),
+  _LanguageOption('hi', 'Hindi'),
+  _LanguageOption('ja', 'Japanese'),
+  _LanguageOption('es', 'Spanish'),
+  _LanguageOption('fr', 'French'),
+  _LanguageOption('de', 'German'),
+  _LanguageOption('it', 'Italian'),
+  _LanguageOption('pt', 'Portuguese'),
+  _LanguageOption('ru', 'Russian'),
+  _LanguageOption('ko', 'Korean'),
+  _LanguageOption('zh', 'Chinese'),
+  _LanguageOption('ar', 'Arabic'),
+  _LanguageOption('tr', 'Turkish'),
+  _LanguageOption('id', 'Indonesian'),
+  _LanguageOption('bn', 'Bengali'),
+];
+
+String _languageLabel(String code, {required String noneLabel}) {
+  final String normalized = code.trim().toLowerCase();
+  if (normalized.isEmpty) {
+    return noneLabel;
+  }
+  for (final _LanguageOption option in _languageOptions) {
+    if (option.code == normalized) {
+      return option.label;
+    }
+  }
+  return normalized;
+}
+
+String _subtitleStartupLabel(String value) {
+  switch (value) {
+    case 'preferred':
+      return 'Preferred only';
+    case 'off':
+      return 'Off';
+    case 'all':
+    default:
+      return 'All subtitles';
+  }
 }
