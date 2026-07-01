@@ -196,6 +196,95 @@ void main() {
     expect(find.text('Drama'), findsOneWidget);
   });
 
+  testWidgets('movie detail enriches addon metadata with TMDB sections', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MovieDetailScreen(
+          id: 0,
+          mediaType: 'tv',
+          externalId: 'tt0903747',
+          fallbackTitle: 'Fallback Show',
+          mediaService: const FakeMediaService(
+            detail: MediaDetail(
+              id: 99,
+              mediaType: 'tv',
+              title: 'TMDB Show',
+              overview: 'TMDB overview.',
+              posterPath: null,
+              backdropPath: null,
+              voteAverage: 8.6,
+              voteCount: 1200,
+              releaseDate: '2022-01-01',
+              runtimeMinutes: 35,
+              genres: <GenreItem>[GenreItem(id: 1, name: 'Comedy')],
+              seasons: <SeasonSummary>[
+                SeasonSummary(
+                  id: 10,
+                  name: 'Season 1',
+                  posterPath: null,
+                  seasonNumber: 1,
+                  episodeCount: 8,
+                ),
+              ],
+              numberOfSeasons: 1,
+              networks: <NetworkItem>[],
+              imdbId: 'tt0903747',
+              cast: <CastItem>[
+                CastItem(
+                  id: 1,
+                  name: 'TMDB Actor',
+                  character: 'Lead',
+                  profilePath: null,
+                ),
+              ],
+              similarItems: <MediaSummary>[
+                MediaSummary(
+                  id: 12,
+                  mediaType: 'tv',
+                  title: 'Related Show',
+                  posterPath: null,
+                  backdropPath: null,
+                  releaseDate: '2023-01-01',
+                ),
+              ],
+              trailers: <MediaTrailer>[
+                MediaTrailer(
+                  name: 'Official Trailer',
+                  key: 'abc123',
+                  site: 'YouTube',
+                  type: 'Trailer',
+                ),
+              ],
+            ),
+          ),
+          addonsService: _FakeMetadataAddonsService(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Addon Show'), findsWidgets);
+    expect(find.textContaining('Loaded from Stremio metadata'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('Trailers'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Official Trailer'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('Seasons'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Season 1'), findsOneWidget);
+  });
+
   testWidgets('tv detail can navigate into episodes flow', (
     WidgetTester tester,
   ) async {

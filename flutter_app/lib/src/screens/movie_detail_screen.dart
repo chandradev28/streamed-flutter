@@ -141,22 +141,33 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     final String externalId = (widget.externalId ?? '').trim();
     if (externalId.isNotEmpty) {
       final MediaDetail? addonDetail = await _fetchAddonDetail(externalId);
+      MediaDetail? tmdbDetail;
+      Object? tmdbError;
+      try {
+        tmdbDetail = await widget.mediaService.findMediaByExternalId(
+          externalId,
+          widget.mediaType,
+        );
+      } catch (error) {
+        tmdbError = error;
+      }
+
+      if (addonDetail != null && tmdbDetail != null) {
+        return _mergeDetails(addonDetail, tmdbDetail, externalId);
+      }
+      if (tmdbDetail != null) {
+        return tmdbDetail;
+      }
       if (addonDetail != null) {
         return addonDetail;
       }
 
-      try {
-        final MediaDetail? detail = await widget.mediaService
-            .findMediaByExternalId(externalId, widget.mediaType);
-        if (detail != null) {
-          return detail;
-        }
-      } catch (_) {
-        final MediaDetail? fallback = _fallbackDetail();
-        if (fallback != null) {
-          return fallback;
-        }
-        rethrow;
+      final MediaDetail? fallback = _fallbackDetail();
+      if (fallback != null) {
+        return fallback;
+      }
+      if (tmdbError != null) {
+        throw tmdbError;
       }
     }
 
@@ -165,6 +176,55 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       return fallback;
     }
     throw StateError('No metadata source was available for this title.');
+  }
+
+  MediaDetail _mergeDetails(
+    MediaDetail addon,
+    MediaDetail enriched,
+    String externalId,
+  ) {
+    return MediaDetail(
+      id: enriched.id > 0 ? enriched.id : addon.id,
+      mediaType: enriched.mediaType,
+      title: addon.title.trim().isNotEmpty ? addon.title : enriched.title,
+      overview:
+          addon.overview.trim().isNotEmpty ? addon.overview : enriched.overview,
+      posterPath: addon.posterPath ?? enriched.posterPath,
+      backdropPath: addon.backdropPath ?? enriched.backdropPath,
+      logoPath: addon.logoPath ?? enriched.logoPath,
+      voteAverage:
+          enriched.voteAverage > 0 ? enriched.voteAverage : addon.voteAverage,
+      voteCount: enriched.voteCount > 0 ? enriched.voteCount : addon.voteCount,
+      releaseDate: addon.releaseDate.isNotEmpty
+          ? addon.releaseDate
+          : enriched.releaseDate,
+      runtimeMinutes: enriched.runtimeMinutes > 0
+          ? enriched.runtimeMinutes
+          : addon.runtimeMinutes,
+      genres: addon.genres.isNotEmpty ? addon.genres : enriched.genres,
+      seasons: enriched.seasons.isNotEmpty ? enriched.seasons : addon.seasons,
+      numberOfSeasons: enriched.numberOfSeasons > 0
+          ? enriched.numberOfSeasons
+          : addon.numberOfSeasons,
+      networks:
+          enriched.networks.isNotEmpty ? enriched.networks : addon.networks,
+      imdbId: enriched.imdbId ?? addon.imdbId ?? externalId,
+      cast: enriched.cast.isNotEmpty ? enriched.cast : addon.cast,
+      similarItems: enriched.similarItems.isNotEmpty
+          ? enriched.similarItems
+          : addon.similarItems,
+      productionCompanies: enriched.productionCompanies.isNotEmpty
+          ? enriched.productionCompanies
+          : addon.productionCompanies,
+      trailers:
+          enriched.trailers.isNotEmpty ? enriched.trailers : addon.trailers,
+      director: enriched.director ?? addon.director,
+      originalLanguage: enriched.originalLanguage ?? addon.originalLanguage,
+      status: enriched.status ?? addon.status,
+      country: (enriched.country ?? '').trim().isNotEmpty
+          ? enriched.country
+          : addon.country,
+    );
   }
 
   Future<MediaDetail?> _fetchAddonDetail(String externalId) async {
@@ -329,6 +389,23 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
 
     if (detail.mediaType == 'tv') {
+      if (detail.id <= 0 && (detail.imdbId ?? '').isNotEmpty) {
+        Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (BuildContext context) => StreamedSourcesScreen(
+              title: detail.title,
+              logoPath: detail.logoPath,
+              posterPath: detail.posterPath ?? detail.backdropPath,
+              mediaType: detail.mediaType,
+              imdbId: detail.imdbId!,
+              seasonNumber: 1,
+              episodeNumber: 1,
+            ),
+          ),
+        );
+        return;
+      }
+
       Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (BuildContext context) => EpisodeScreen(
@@ -657,13 +734,18 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               ),
             ],
           ),
-          _PinnedToolbar(
-            title: detail.title,
-            logoPath: detail.logoPath,
-            showTitle: _showPinnedTitle,
-            isFavorited: _isFavorited,
-            onBack: () => Navigator.of(context).maybePop(),
-            onFavorite: _toggleFavorite,
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: _PinnedToolbar(
+              title: detail.title,
+              logoPath: detail.logoPath,
+              showTitle: _showPinnedTitle,
+              isFavorited: _isFavorited,
+              onBack: () => Navigator.of(context).maybePop(),
+              onFavorite: _toggleFavorite,
+            ),
           ),
         ],
       ),
