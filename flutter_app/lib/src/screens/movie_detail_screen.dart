@@ -8,6 +8,7 @@ import '../services/mdblist_api_service.dart';
 import '../services/tmdb_image.dart';
 import '../services/tmdb_media_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/title_logo.dart';
 import 'episode_screen.dart';
 import 'magnet_screen.dart';
 import 'streamed_sources_screen.dart';
@@ -278,6 +279,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       MaterialPageRoute<void>(
         builder: (BuildContext context) => StreamedSourcesScreen(
           title: detail.title,
+          logoPath: detail.logoPath,
           posterPath: detail.posterPath ?? detail.backdropPath,
           mediaType: detail.mediaType,
           imdbId: detail.imdbId!,
@@ -578,6 +580,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           ),
           _PinnedToolbar(
             title: detail.title,
+            logoPath: detail.logoPath,
             showTitle: _showPinnedTitle,
             isFavorited: _isFavorited,
             onBack: () => Navigator.of(context).maybePop(),
@@ -592,6 +595,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 class _PinnedToolbar extends StatelessWidget {
   const _PinnedToolbar({
     required this.title,
+    this.logoPath,
     required this.showTitle,
     required this.isFavorited,
     required this.onBack,
@@ -599,6 +603,7 @@ class _PinnedToolbar extends StatelessWidget {
   });
 
   final String title;
+  final String? logoPath;
   final bool showTitle;
   final bool isFavorited;
   final VoidCallback onBack;
@@ -633,16 +638,19 @@ class _PinnedToolbar extends StatelessWidget {
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 180),
                 opacity: showTitle ? 1 : 0,
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppColors.text,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.3,
+                child: Center(
+                  child: TitleLogo(
+                    title: title,
+                    logoPath: logoPath,
+                    maxLines: 1,
+                    logoHeight: 34,
+                    maxLogoWidth: 190,
+                    textStyle: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.3,
+                    ),
                   ),
                 ),
               ),
@@ -721,12 +729,13 @@ class _HeroPanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
-                Text(
-                  detail.title,
+                TitleLogo(
+                  title: detail.title,
+                  logoPath: detail.logoPath,
                   maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  logoHeight: 96,
+                  maxLogoWidth: 330,
+                  textStyle: const TextStyle(
                     color: AppColors.text,
                     fontSize: 34,
                     height: 0.95,

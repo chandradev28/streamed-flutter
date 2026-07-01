@@ -7,6 +7,43 @@ import 'package:flutter_app/src/screens/movie_detail_screen.dart';
 import 'test_fakes.dart';
 
 void main() {
+  test('media detail prefers English title logos', () {
+    final MediaDetail detail = MediaDetail.fromJson(
+      <String, dynamic>{
+        'id': 7,
+        'title': 'Movie Title',
+        'overview': 'A test overview.',
+        'poster_path': null,
+        'backdrop_path': null,
+        'vote_average': 8.4,
+        'vote_count': 1000,
+        'release_date': '2024-01-01',
+        'runtime': 120,
+        'genres': const <dynamic>[],
+        'seasons': const <dynamic>[],
+        'number_of_seasons': 0,
+        'networks': const <dynamic>[],
+        'production_companies': const <dynamic>[],
+        'imdb_id': 'tt1234567',
+        'images': <String, dynamic>{
+          'logos': <dynamic>[
+            <String, dynamic>{
+              'file_path': '/null-language.png',
+              'iso_639_1': null,
+            },
+            <String, dynamic>{
+              'file_path': '/english-logo.png',
+              'iso_639_1': 'en',
+            },
+          ],
+        },
+      },
+      mediaType: 'movie',
+    );
+
+    expect(detail.logoPath, '/english-logo.png');
+  });
+
   testWidgets('movie detail retries once before showing the failure state', (
     WidgetTester tester,
   ) async {
@@ -98,7 +135,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.tap(find.text('Play'));
+    _tapPlayButton(tester);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -150,12 +187,22 @@ void main() {
     expect(find.text('Galaxy Squad'), findsWidgets);
     expect(find.text('Play'), findsOneWidget);
 
-    await tester.tap(find.text('Play'));
+    _tapPlayButton(tester);
     await tester.pumpAndSettle();
 
     expect(find.text('Season 1'), findsOneWidget);
     expect(find.text('Pilot'), findsOneWidget);
   });
+}
+
+void _tapPlayButton(WidgetTester tester) {
+  final ButtonStyleButton button = tester.widget<ButtonStyleButton>(
+    find.ancestor(
+      of: find.text('Play'),
+      matching: find.bySubtype<ButtonStyleButton>(),
+    ),
+  );
+  button.onPressed?.call();
 }
 
 class _FlakyMediaService extends FakeMediaService {

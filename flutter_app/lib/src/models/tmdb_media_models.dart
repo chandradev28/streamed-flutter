@@ -232,6 +232,7 @@ class MediaDetail {
     required this.overview,
     required this.posterPath,
     required this.backdropPath,
+    this.logoPath,
     required this.voteAverage,
     required this.voteCount,
     required this.releaseDate,
@@ -257,6 +258,7 @@ class MediaDetail {
   final String overview;
   final String? posterPath;
   final String? backdropPath;
+  final String? logoPath;
   final double voteAverage;
   final int voteCount;
   final String releaseDate;
@@ -298,6 +300,7 @@ class MediaDetail {
       overview: (json['overview'] as String?) ?? '',
       posterPath: json['poster_path'] as String?,
       backdropPath: json['backdrop_path'] as String?,
+      logoPath: _readLogoPath(json['images']),
       voteAverage: (json['vote_average'] as num?)?.toDouble() ?? 0,
       voteCount: (json['vote_count'] as num?)?.toInt() ?? 0,
       releaseDate: (json['release_date'] as String?) ??
@@ -341,4 +344,37 @@ class MediaDetail {
           .trim(),
     );
   }
+}
+
+String? _readLogoPath(dynamic images) {
+  if (images is! Map<String, dynamic>) {
+    return null;
+  }
+  final List<Map<String, dynamic>> logos =
+      ((images['logos'] as List<dynamic>?) ?? const <dynamic>[])
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
+  if (logos.isEmpty) {
+    return null;
+  }
+
+  Map<String, dynamic>? preferred;
+  for (final Map<String, dynamic> logo in logos) {
+    if (logo['iso_639_1']?.toString() == 'en') {
+      preferred = logo;
+      break;
+    }
+  }
+  if (preferred == null) {
+    for (final Map<String, dynamic> logo in logos) {
+      if (logo['iso_639_1'] == null) {
+        preferred = logo;
+        break;
+      }
+    }
+  }
+
+  final Map<String, dynamic> selected = preferred ?? logos.first;
+  final String path = selected['file_path']?.toString().trim() ?? '';
+  return path.isEmpty ? null : path;
 }

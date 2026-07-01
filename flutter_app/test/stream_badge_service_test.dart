@@ -53,4 +53,54 @@ void main() {
       'HDR10',
     ]);
   });
+
+  test('parses nested Badger groups and quality aliases', () {
+    const StreamBadgeService service = StreamBadgeService();
+
+    final List<StreamBadge> badges = service.parseBadges('''
+{
+  "groups": [
+    {
+      "name": "Quality",
+      "badges": [
+        {
+          "name": "UHD 4K",
+          "enabled": "true",
+          "pattern": "\\\\b2160p\\\\b",
+          "image": "https://example.test/uhd.png"
+        },
+        {
+          "name": "Hidden",
+          "disabled": true,
+          "pattern": "Supergirl"
+        }
+      ]
+    }
+  ]
+}
+''');
+
+    expect(badges.map((StreamBadge badge) => badge.name), <String>[
+      'UHD 4K',
+    ]);
+    expect(badges.single.imageUrl, 'https://example.test/uhd.png');
+
+    final List<StreamBadge> matches = service.matchesForSource(
+      badges: badges,
+      source: const StreamSource(
+        id: '2',
+        provider: 'addon',
+        sourceDisplayName: 'StremThru Torz',
+        title: 'Torz',
+        description: '4k',
+        quality: '4K',
+        sizeLabel: '544 MB',
+        isCached: false,
+      ),
+    );
+
+    expect(matches.map((StreamBadge badge) => badge.name), <String>[
+      'UHD 4K',
+    ]);
+  });
 }

@@ -117,6 +117,7 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
       MaterialPageRoute<void>(
         builder: (BuildContext context) => StreamedSourcesScreen(
           title: widget.showName,
+          logoPath: show.logoPath,
           posterPath: widget.posterPath ?? show.posterPath,
           mediaType: 'tv',
           imdbId: show.imdbId!,

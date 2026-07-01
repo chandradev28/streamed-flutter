@@ -22,10 +22,15 @@ class StreamBadge {
   factory StreamBadge.fromJson(Map<String, dynamic> json) {
     return StreamBadge(
       name: (json['name'] as String?)?.trim() ?? 'Badge',
-      pattern:
-          ((json['pattern'] as String?) ?? (json['match'] as String?) ?? '')
-              .trim(),
-      imageUrl: ((json['imageURL'] as String?) ?? (json['imageUrl'] as String?))
+      pattern: ((json['pattern'] as String?) ??
+              (json['match'] as String?) ??
+              (json['regex'] as String?) ??
+              '')
+          .trim(),
+      imageUrl: ((json['imageURL'] as String?) ??
+              (json['imageUrl'] as String?) ??
+              (json['image'] as String?) ??
+              (json['image_url'] as String?))
           ?.trim(),
       tagColor: (json['tagColor'] as String?)?.trim(),
       borderColor: (json['borderColor'] as String?)?.trim(),
@@ -44,24 +49,14 @@ class StreamBadgeService {
     }
 
     final dynamic decoded = jsonDecode(trimmed);
-    final Iterable<dynamic> rows;
-    if (decoded is List<dynamic>) {
-      rows = decoded;
-    } else if (decoded is Map<String, dynamic>) {
-      if (decoded['filters'] is List<dynamic>) {
-        rows = decoded['filters'] as List<dynamic>;
-      } else if (decoded['badges'] is List<dynamic>) {
-        rows = decoded['badges'] as List<dynamic>;
-      } else {
-        rows = <dynamic>[decoded];
-      }
-    } else {
+    final List<Map<String, dynamic>> rows = <Map<String, dynamic>>[];
+    _collectBadgeRows(decoded, rows);
+    if (rows.isEmpty) {
       return const <StreamBadge>[];
     }
 
     return rows
-        .whereType<Map<String, dynamic>>()
-        .where((Map<String, dynamic> row) => row['isEnabled'] != false)
+        .where(_isEnabled)
         .map(StreamBadge.fromJson)
         .where(
           (StreamBadge badge) =>
@@ -85,8 +80,12 @@ class StreamBadgeService {
       source.quality,
       source.sizeLabel,
       source.sourceDisplayName,
+      _qualityAliases(source.quality),
+      _qualityAliases(source.title),
+      _qualityAliases(source.description),
       if (source.cacheProvider != null) source.cacheProvider!,
       if (source.fileName != null) source.fileName!,
+      if (source.videoSizeBytes != null) '${source.videoSizeBytes}',
     ].join('\n');
 
     final List<StreamBadge> matches = <StreamBadge>[];
@@ -109,5 +108,88 @@ class StreamBadgeService {
       final String needle = badge.pattern.toLowerCase().trim();
       return needle.isNotEmpty && searchable.toLowerCase().contains(needle);
     }
+  }
+
+  void _collectBadgeRows(dynamic value, List<Map<String, dynamic>> rows) {
+    if (value is List<dynamic>) {
+      for (final dynamic item in value) {
+        _collectBadgeRows(item, rows);
+      }
+      return;
+    }
+
+    if (value is! Map<String, dynamic>) {
+      return;
+    }
+
+    if (_looksLikeBadge(value)) {
+      rows.add(value);
+    }
+
+    for (final String key in <String>[
+      'filters',
+      'badges',
+      'items',
+      'children',
+      'groups',
+      'categories',
+      'templates',
+    ]) {
+      if (value.containsKey(key)) {
+        _collectBadgeRows(value[key], rows);
+      }
+    }
+  }
+
+  bool _looksLikeBadge(Map<String, dynamic> row) {
+    return row.containsKey('pattern') ||
+        row.containsKey('match') ||
+        row.containsKey('regex') ||
+        row.containsKey('imageURL') ||
+        row.containsKey('imageUrl') ||
+        row.containsKey('image') ||
+        row.containsKey('image_url');
+  }
+
+  bool _isEnabled(Map<String, dynamic> row) {
+    if (_isFalse(row['isEnabled']) ||
+        _isFalse(row['enabled']) ||
+        _isFalse(row['use']) ||
+        _isTrue(row['disabled'])) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _isFalse(dynamic value) {
+    if (value == false) {
+      return true;
+    }
+    return value?.toString().trim().toLowerCase() == 'false';
+  }
+
+  bool _isTrue(dynamic value) {
+    if (value == true) {
+      return true;
+    }
+    return value?.toString().trim().toLowerCase() == 'true';
+  }
+
+  String _qualityAliases(String raw) {
+    final String text = raw.toLowerCase();
+    final Set<String> aliases = <String>{};
+    if (text.contains('4k') || text.contains('2160')) {
+      aliases.addAll(<String>['4k', 'uhd', '2160p', '2160']);
+    }
+    if (text.contains('1080')) {
+      aliases.addAll(<String>['1080p', '1080', 'fhd']);
+    }
+    if (text.contains('720')) {
+      aliases.addAll(<String>['720p', '720', 'hd']);
+    }
+    if (text.contains('480')) {
+      aliases.addAll(<String>['480p', '480', 'sd']);
+    }
+    return aliases.join('\n');
   }
 }

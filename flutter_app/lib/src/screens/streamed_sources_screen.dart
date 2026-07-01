@@ -10,12 +10,14 @@ import '../services/stremio_addons_service.dart';
 import '../services/tmdb_image.dart';
 import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/title_logo.dart';
 import 'video_player_screen.dart';
 
 class StreamedSourcesScreen extends StatefulWidget {
   StreamedSourcesScreen({
     super.key,
     required this.title,
+    this.logoPath,
     this.posterPath,
     required this.mediaType,
     required this.imdbId,
@@ -37,6 +39,7 @@ class StreamedSourcesScreen extends StatefulWidget {
         streamBadgeService = streamBadgeService ?? const StreamBadgeService();
 
   final String title;
+  final String? logoPath;
   final String? posterPath;
   final String mediaType;
   final String imdbId;
@@ -56,12 +59,15 @@ class StreamedSourcesScreen extends StatefulWidget {
 }
 
 class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
+  final ScrollController _scrollController = ScrollController();
+
   AppSettings _settings = const AppSettings();
   List<StreamSource> _results = const <StreamSource>[];
   bool _loading = true;
   String? _message;
   String? _selectedSource;
   bool _cachedOnly = false;
+  bool _showPinnedTitle = false;
   List<StreamBadge> _badges = const <StreamBadge>[];
 
   bool get _isEpisodeContext =>
@@ -110,7 +116,26 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
     _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_handleScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleScroll() {
+    final bool shouldShow =
+        _scrollController.hasClients && _scrollController.offset > 150;
+    if (shouldShow == _showPinnedTitle) {
+      return;
+    }
+    setState(() {
+      _showPinnedTitle = shouldShow;
+    });
   }
 
   Future<void> _bootstrap() async {
@@ -447,11 +472,13 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
             color: AppColors.text,
             backgroundColor: AppColors.cardBackground,
             child: CustomScrollView(
+              controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: <Widget>[
                 SliverToBoxAdapter(
                   child: _SourcesHero(
                     title: widget.title,
+                    logoPath: widget.logoPath,
                     subtitle: _isEpisodeContext
                         ? 'S${widget.seasonNumber}E${widget.episodeNumber}'
                         : widget.mediaType == 'tv'
@@ -461,7 +488,6 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
                     cachedOnly: _cachedOnly,
                     cachedCount: cachedCount,
                     totalCount: _results.length,
-                    onBack: () => Navigator.of(context).maybePop(),
                     onRefresh: _loading ? null : _search,
                     onToggleCached: () {
                       setState(() {
@@ -471,9 +497,8 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
                   ),
                 ),
                 if (sourceTabs.isNotEmpty)
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _SourceTabsHeader(
+                  SliverToBoxAdapter(
+                    child: _SourceTabsStrip(
                       selectedSource: _selectedSource,
                       sourceNames: sourceTabs,
                       onSelected: (String? sourceName) {
@@ -484,7 +509,7 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
                     ),
                   ),
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 34),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate(
                       <Widget>[
@@ -529,6 +554,13 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
                 ),
               ],
             ),
+          ),
+          _SourcesPinnedToolbar(
+            title: widget.title,
+            logoPath: widget.logoPath,
+            showTitle: _showPinnedTitle,
+            onBack: () => Navigator.of(context).maybePop(),
+            onRefresh: _loading ? null : _search,
           ),
         ],
       ),
@@ -584,23 +616,23 @@ class _SourcesBackdrop extends StatelessWidget {
 class _SourcesHero extends StatelessWidget {
   const _SourcesHero({
     required this.title,
+    this.logoPath,
     required this.subtitle,
     required this.loading,
     required this.cachedOnly,
     required this.cachedCount,
     required this.totalCount,
-    required this.onBack,
     required this.onRefresh,
     required this.onToggleCached,
   });
 
   final String title;
+  final String? logoPath;
   final String subtitle;
   final bool loading;
   final bool cachedOnly;
   final int cachedCount;
   final int totalCount;
-  final VoidCallback onBack;
   final VoidCallback? onRefresh;
   final VoidCallback onToggleCached;
 
@@ -613,25 +645,15 @@ class _SourcesHero extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Row(
-              children: <Widget>[
-                _TopIconButton(
-                  icon: Icons.arrow_back_rounded,
-                  onTap: onBack,
-                ),
-                const Spacer(),
-                _TopIconButton(
-                  icon: Icons.refresh_rounded,
-                  onTap: onRefresh,
-                ),
-              ],
-            ),
-            const SizedBox(height: 26),
-            Text(
-              title,
+            const SizedBox(height: 64),
+            TitleLogo(
+              title: title,
+              logoPath: logoPath,
               maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              textAlign: TextAlign.left,
+              logoHeight: 104,
+              maxLogoWidth: 360,
+              textStyle: const TextStyle(
                 color: AppColors.text,
                 fontSize: 38,
                 height: 0.95,
@@ -696,6 +718,80 @@ class _SourcesHero extends StatelessWidget {
   }
 }
 
+class _SourcesPinnedToolbar extends StatelessWidget {
+  const _SourcesPinnedToolbar({
+    required this.title,
+    this.logoPath,
+    required this.showTitle,
+    required this.onBack,
+    required this.onRefresh,
+  });
+
+  final String title;
+  final String? logoPath;
+  final bool showTitle;
+  final VoidCallback onBack;
+  final VoidCallback? onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
+        decoration: BoxDecoration(
+          color:
+              showTitle ? Colors.black.withOpacity(0.74) : Colors.transparent,
+          border: Border(
+            bottom: BorderSide(
+              color: showTitle
+                  ? Colors.white.withOpacity(0.06)
+                  : Colors.transparent,
+            ),
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            _TopIconButton(
+              icon: Icons.arrow_back_rounded,
+              onTap: onBack,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: showTitle ? 1 : 0,
+                child: Center(
+                  child: TitleLogo(
+                    title: title,
+                    logoPath: logoPath,
+                    maxLines: 1,
+                    logoHeight: 38,
+                    maxLogoWidth: 210,
+                    textStyle: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 20,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            _TopIconButton(
+              icon: Icons.refresh_rounded,
+              onTap: onRefresh,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _TopIconButton extends StatelessWidget {
   const _TopIconButton({
     required this.icon,
@@ -727,8 +823,8 @@ class _TopIconButton extends StatelessWidget {
   }
 }
 
-class _SourceTabsHeader extends SliverPersistentHeaderDelegate {
-  _SourceTabsHeader({
+class _SourceTabsStrip extends StatelessWidget {
+  const _SourceTabsStrip({
     required this.selectedSource,
     required this.sourceNames,
     required this.onSelected,
@@ -739,27 +835,12 @@ class _SourceTabsHeader extends SliverPersistentHeaderDelegate {
   final ValueChanged<String?> onSelected;
 
   @override
-  double get minExtent => 66;
-
-  @override
-  double get maxExtent => 66;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.78),
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withOpacity(0.05)),
-        ),
-      ),
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 64,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
         children: <Widget>[
           _SourceFilterChip(
             label: 'All',
@@ -779,12 +860,6 @@ class _SourceTabsHeader extends SliverPersistentHeaderDelegate {
         ],
       ),
     );
-  }
-
-  @override
-  bool shouldRebuild(covariant _SourceTabsHeader oldDelegate) {
-    return oldDelegate.selectedSource != selectedSource ||
-        oldDelegate.sourceNames != sourceNames;
   }
 }
 
@@ -933,21 +1008,31 @@ class _StreamedSourceCard extends StatelessWidget {
     final String sizeLine = _sizeLine(source);
 
     return Material(
-      color: Colors.white.withOpacity(0.075),
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(22),
       child: InkWell(
         onTap: onPlay,
+        onLongPress: source.hasTorrentSource ? onAddToTorBox : null,
         borderRadius: BorderRadius.circular(22),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+          padding: const EdgeInsets.fromLTRB(18, 17, 18, 15),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
+            color: const Color(0xFF121416).withOpacity(0.78),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Colors.white.withOpacity(0.075),
+                Colors.white.withOpacity(0.035),
+              ],
+            ),
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: Colors.black.withOpacity(0.20),
-                blurRadius: 22,
-                offset: const Offset(0, 14),
+                color: Colors.black.withOpacity(0.28),
+                blurRadius: 24,
+                offset: const Offset(0, 16),
               ),
             ],
           ),
@@ -958,16 +1043,30 @@ class _StreamedSourceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Expanded(
-                    child: Text(
-                      '⚡ ${source.quality.isEmpty ? 'Source' : source.quality}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.text,
-                        fontSize: 19,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.3,
-                      ),
+                    child: Row(
+                      children: <Widget>[
+                        const Icon(
+                          Icons.bolt_rounded,
+                          color: Color(0xFFFFD447),
+                          size: 24,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            source.quality.isEmpty
+                                ? 'Source'
+                                : source.quality.toUpperCase(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.text,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   IconButton(
@@ -984,7 +1083,7 @@ class _StreamedSourceCard extends StatelessWidget {
               if (releaseLine.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 2),
                 Text(
-                  '「$releaseLine」',
+                  '[$releaseLine]',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -996,19 +1095,24 @@ class _StreamedSourceCard extends StatelessWidget {
               ],
               const SizedBox(height: 10),
               if (featureLine.isNotEmpty)
-                _SourceInfoLine(icon: '📼', text: featureLine),
+                _SourceInfoLine(
+                    icon: Icons.movie_creation_outlined, text: featureLine),
               if (sizeLine.isNotEmpty)
-                _SourceInfoLine(icon: '📦', text: sizeLine),
-              _SourceInfoLine(icon: '🔧', text: source.sourceDisplayName),
+                _SourceInfoLine(
+                    icon: Icons.inventory_2_outlined, text: sizeLine),
+              _SourceInfoLine(
+                  icon: Icons.build_rounded, text: source.sourceDisplayName),
               if (seasonPack)
-                const _SourceInfoLine(icon: '📁', text: 'Season pack'),
+                const _SourceInfoLine(
+                    icon: Icons.folder_copy_outlined, text: 'Season pack'),
               if (source.isDirectUrl)
-                const _SourceInfoLine(icon: '🔗', text: 'Direct URL'),
+                const _SourceInfoLine(
+                    icon: Icons.link_rounded, text: 'Direct URL'),
               if (fileLine.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
                   child: Text(
-                    '✏️ $fileLine',
+                    fileLine,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -1018,17 +1122,6 @@ class _StreamedSourceCard extends StatelessWidget {
                     ),
                   ),
                 ),
-              if (!source.isDirectUrl) ...<Widget>[
-                const SizedBox(height: 14),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: onAddToTorBox,
-                    icon: const Icon(Icons.add_link_rounded, size: 18),
-                    label: const Text('Add to TorBox'),
-                  ),
-                ),
-              ],
               if (badges.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 12),
                 _StreamBadgeWrap(badges: badges),
@@ -1047,7 +1140,7 @@ class _SourceInfoLine extends StatelessWidget {
     required this.text,
   });
 
-  final String icon;
+  final IconData icon;
   final String text;
 
   @override
@@ -1057,7 +1150,7 @@ class _SourceInfoLine extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(icon, style: const TextStyle(fontSize: 15)),
+          Icon(icon, color: AppColors.textMuted, size: 17),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1092,10 +1185,10 @@ class _StreamBadgeWrap extends StatelessWidget {
         final String? imageUrl = badge.imageUrl;
         if (imageUrl != null && imageUrl.isNotEmpty) {
           return ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 104, maxHeight: 30),
+            constraints: const BoxConstraints(maxWidth: 118, maxHeight: 32),
             child: Image.network(
               imageUrl,
-              height: 24,
+              height: 26,
               fit: BoxFit.contain,
               errorBuilder: (
                 BuildContext context,
@@ -1291,7 +1384,7 @@ String _featureLine(StreamSource source) {
 
   return parts.isEmpty
       ? source.description.split('\n').first.trim()
-      : parts.join(' · ');
+      : parts.join(' / ');
 }
 
 String _sizeLine(StreamSource source) {
@@ -1300,7 +1393,7 @@ String _sizeLine(StreamSource source) {
     if ((source.cacheProvider ?? '').trim().isNotEmpty)
       source.cacheProvider!.trim(),
   ];
-  return parts.join(' · ');
+  return parts.join(' / ');
 }
 
 String _fileLine(StreamSource source) {

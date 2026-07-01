@@ -341,6 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
           MaterialPageRoute<void>(
             builder: (BuildContext context) => StreamedSourcesScreen(
               title: detail.title,
+              logoPath: detail.logoPath,
               posterPath: item.posterPath ?? detail.posterPath,
               mediaType: item.mediaType,
               imdbId: imdbId!,
