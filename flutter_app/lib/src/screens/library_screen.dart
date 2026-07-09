@@ -10,6 +10,7 @@ import '../services/tmdb_image.dart';
 import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/layout_options.dart';
+import '../widgets/optimized_network_image.dart';
 import 'movie_detail_screen.dart';
 import 'video_player_screen.dart';
 
@@ -193,6 +194,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         backgroundColor: AppColors.surface,
         onRefresh: _loadFavorites,
         child: CustomScrollView(
+          cacheExtent: 850,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: <Widget>[
             SliverPadding(
@@ -490,9 +492,10 @@ class _FavoriteCard extends StatelessWidget {
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
                     onTap: onOpen,
-                    child: Image.network(
-                      getImageUrl(item.posterPath, 'w342'),
+                    child: OptimizedNetworkImage(
+                      url: getImageUrl(item.posterPath, 'w342'),
                       fit: BoxFit.cover,
+                      cacheWidth: 360,
                       errorBuilder: (
                         BuildContext context,
                         Object error,

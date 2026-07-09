@@ -139,4 +139,34 @@ void main() {
 
     expect(matches.map((StreamBadge badge) => badge.name), <String>['HEVC']);
   });
+
+  test('matches slash-delimited Badger regex patterns', () {
+    const StreamBadgeService service = StreamBadgeService();
+
+    final List<StreamBadge> badges = service.parseBadges('''
+[
+  {
+    "name": "REMUX",
+    "regex": "/remux/i",
+    "imageURL": "https://example.test/remux.png"
+  }
+]
+''');
+
+    final List<StreamBadge> matches = service.matchesForSource(
+      badges: badges,
+      source: const StreamSource(
+        id: '4',
+        provider: 'addon',
+        sourceDisplayName: 'StremThru Torz',
+        title: 'House.of.the.Dragon.S01E01.2160p.BluRay.REMUX.mkv',
+        description: 'HEVC HDR10',
+        quality: '4K',
+        sizeLabel: '29 GB',
+        isCached: true,
+      ),
+    );
+
+    expect(matches.map((StreamBadge badge) => badge.name), <String>['REMUX']);
+  });
 }

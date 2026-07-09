@@ -10,6 +10,7 @@ import '../services/stremio_addons_service.dart';
 import '../services/tmdb_image.dart';
 import '../services/torbox_api_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/optimized_network_image.dart';
 import '../widgets/title_logo.dart';
 import 'video_player_screen.dart';
 
@@ -95,13 +96,85 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
         .toList(growable: false);
   }
 
-  List<String> get _visibleGroupNames {
-    final List<String> values = _visibleResults
-        .map((StreamSource source) => source.sourceDisplayName)
-        .toSet()
-        .toList(growable: false)
-      ..sort();
-    return values;
+  Map<String, List<StreamSource>> _groupVisibleResults(
+    List<StreamSource> results,
+  ) {
+    final Map<String, List<StreamSource>> grouped =
+        <String, List<StreamSource>>{};
+    for (final StreamSource source in results) {
+      grouped
+          .putIfAbsent(source.sourceDisplayName, () => <StreamSource>[])
+          .add(source);
+    }
+    final List<String> names = grouped.keys.toList(growable: false)..sort();
+    return <String, List<StreamSource>>{
+      for (final String name in names) name: grouped[name]!,
+    };
+  }
+
+  List<_SourceListEntry> _buildSourceEntries(
+    Map<String, List<StreamSource>> groupedSources,
+  ) {
+    final List<_SourceListEntry> entries = <_SourceListEntry>[];
+    for (final MapEntry<String, List<StreamSource>> group
+        in groupedSources.entries) {
+      entries.add(_SourceHeaderEntry(group.key));
+      if (!_isEpisodeContext) {
+        for (final StreamSource source in group.value) {
+          entries.add(_SourceCardEntry(source));
+        }
+      } else {
+        final List<StreamSource> episodeSources = group.value
+            .where((StreamSource source) => !_isSeasonPackSource(source))
+            .toList(growable: false);
+        final List<StreamSource> seasonPacks = group.value
+            .where((StreamSource source) => _isSeasonPackSource(source))
+            .toList(growable: false);
+
+        if (episodeSources.isNotEmpty) {
+          entries.add(const _SourceSmallHeaderEntry('Episode Sources'));
+          for (final StreamSource source in episodeSources) {
+            entries.add(_SourceCardEntry(source));
+          }
+        }
+        if (seasonPacks.isNotEmpty) {
+          entries.add(const _SourceSpacerEntry(4));
+          entries.add(const _SourceSmallHeaderEntry('Season Packs'));
+          for (final StreamSource source in seasonPacks) {
+            entries.add(_SourceCardEntry(source));
+          }
+        }
+      }
+      entries.add(const _SourceSpacerEntry(14));
+    }
+    return entries;
+  }
+
+  Widget _buildSourceEntry(_SourceListEntry entry) {
+    if (entry is _SourceHeaderEntry) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: _SectionHeader(title: entry.title),
+      );
+    }
+    if (entry is _SourceSmallHeaderEntry) {
+      return _SmallGroupLabel(entry.title);
+    }
+    if (entry is _SourceSpacerEntry) {
+      return SizedBox(height: entry.height);
+    }
+    final StreamSource source = (entry as _SourceCardEntry).source;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: RepaintBoundary(
+        child: _StreamedSourceCard(
+          source: source,
+          badges: _badgesForCard(widget.streamBadgeService, _badges, source),
+          onPlay: () => _playSource(source),
+          onAddToTorBox: () => _addToTorBox(source),
+        ),
+      ),
+    );
   }
 
   bool _isSeasonPackSource(StreamSource source) {
@@ -129,7 +202,7 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
 
   void _handleScroll() {
     final bool shouldShow =
-        _scrollController.hasClients && _scrollController.offset > 150;
+        _scrollController.hasClients && _scrollController.offset > 24;
     if (shouldShow == _showPinnedTitle) {
       return;
     }
@@ -459,6 +532,11 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
     final int cachedCount =
         _results.where((StreamSource source) => source.isCached).length;
     final List<String> sourceTabs = _availableSources;
+    final List<StreamSource> visibleResults = _visibleResults;
+    final Map<String, List<StreamSource>> visibleGroups =
+        _groupVisibleResults(visibleResults);
+    final List<_SourceListEntry> sourceEntries =
+        _buildSourceEntries(visibleGroups);
 
     return Scaffold(
       backgroundColor: const Color(0xFF050505),
@@ -473,6 +551,7 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
             backgroundColor: AppColors.cardBackground,
             child: CustomScrollView(
               controller: _scrollController,
+              cacheExtent: 900,
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: <Widget>[
                 SliverToBoxAdapter(
@@ -510,47 +589,38 @@ class _StreamedSourcesScreenState extends State<StreamedSourcesScreen> {
                   ),
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(18, 12, 18, 34),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate(
-                      <Widget>[
-                        if (_loading)
-                          const Padding(
+                  sliver: _loading
+                      ? const SliverToBoxAdapter(
+                          child: Padding(
                             padding: EdgeInsets.symmetric(vertical: 56),
                             child: Center(
                               child: CircularProgressIndicator(
                                 color: AppColors.text,
                               ),
                             ),
-                          )
-                        else if (_results.isEmpty)
-                          _EmptyState(message: _message)
-                        else if (_visibleResults.isEmpty)
-                          _EmptyState(
-                            message: _cachedOnly
-                                ? 'No cached streams match the current filter.'
-                                : _message,
-                          )
-                        else
-                          ..._visibleGroupNames.map(
-                            (String sourceName) => _SourceResultGroup(
-                              sourceName: sourceName,
-                              sources: _visibleResults
-                                  .where(
-                                    (StreamSource source) =>
-                                        source.sourceDisplayName == sourceName,
-                                  )
-                                  .toList(growable: false),
-                              isEpisodeContext: _isEpisodeContext,
-                              isSeasonPackSource: _isSeasonPackSource,
-                              badges: _badges,
-                              badgeService: widget.streamBadgeService,
-                              onPlay: _playSource,
-                              onAddToTorBox: _addToTorBox,
-                            ),
                           ),
-                      ],
-                    ),
-                  ),
+                        )
+                      : _results.isEmpty
+                          ? SliverToBoxAdapter(
+                              child: _EmptyState(message: _message),
+                            )
+                          : visibleResults.isEmpty
+                              ? SliverToBoxAdapter(
+                                  child: _EmptyState(
+                                    message: _cachedOnly
+                                        ? 'No cached streams match the current filter.'
+                                        : _message,
+                                  ),
+                                )
+                              : SliverList.builder(
+                                  itemCount: sourceEntries.length,
+                                  itemBuilder:
+                                      (BuildContext context, int index) {
+                                    return _buildSourceEntry(
+                                      sourceEntries[index],
+                                    );
+                                  },
+                                ),
                 ),
               ],
             ),
@@ -587,9 +657,10 @@ class _SourcesBackdrop extends StatelessWidget {
         if (path == null || path.isEmpty)
           const ColoredBox(color: Color(0xFF050505))
         else
-          Image.network(
-            _sourceImageUrl(path, 'original'),
+          OptimizedNetworkImage(
+            url: _sourceImageUrl(path, 'w1280'),
             fit: BoxFit.cover,
+            cacheWidth: 1080,
             errorBuilder: (
               BuildContext context,
               Object error,
@@ -746,8 +817,7 @@ class _SourcesPinnedToolbar extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
         decoration: BoxDecoration(
-          color:
-              showTitle ? Colors.black.withOpacity(0.74) : Colors.transparent,
+          color: Colors.black.withOpacity(showTitle ? 0.78 : 0.20),
           border: Border(
             bottom: BorderSide(
               color: showTitle
@@ -844,6 +914,7 @@ class _SourceTabsStrip extends StatelessWidget {
     return SizedBox(
       height: 58,
       child: ListView(
+        cacheExtent: 500,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(18, 4, 18, 10),
         children: <Widget>[
@@ -868,90 +939,32 @@ class _SourceTabsStrip extends StatelessWidget {
   }
 }
 
-class _SourceResultGroup extends StatelessWidget {
-  const _SourceResultGroup({
-    required this.sourceName,
-    required this.sources,
-    required this.isEpisodeContext,
-    required this.isSeasonPackSource,
-    required this.badges,
-    required this.badgeService,
-    required this.onPlay,
-    required this.onAddToTorBox,
-  });
+abstract class _SourceListEntry {
+  const _SourceListEntry();
+}
 
-  final String sourceName;
-  final List<StreamSource> sources;
-  final bool isEpisodeContext;
-  final bool Function(StreamSource source) isSeasonPackSource;
-  final List<StreamBadge> badges;
-  final StreamBadgeService badgeService;
-  final ValueChanged<StreamSource> onPlay;
-  final ValueChanged<StreamSource> onAddToTorBox;
+class _SourceHeaderEntry extends _SourceListEntry {
+  const _SourceHeaderEntry(this.title);
 
-  @override
-  Widget build(BuildContext context) {
-    final List<StreamSource> episodeSources = sources
-        .where((StreamSource source) => !isSeasonPackSource(source))
-        .toList(growable: false);
-    final List<StreamSource> seasonPacks = sources
-        .where((StreamSource source) => isSeasonPackSource(source))
-        .toList(growable: false);
+  final String title;
+}
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 26),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          _SectionHeader(title: sourceName),
-          const SizedBox(height: 14),
-          if (!isEpisodeContext)
-            ...sources.map(
-              (StreamSource source) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _StreamedSourceCard(
-                  source: source,
-                  badges: _badgesForCard(badgeService, badges, source),
-                  onPlay: () => onPlay(source),
-                  onAddToTorBox: () => onAddToTorBox(source),
-                ),
-              ),
-            )
-          else ...<Widget>[
-            if (episodeSources.isNotEmpty) ...<Widget>[
-              const _SmallGroupLabel('Episode Sources'),
-              ...episodeSources.map(
-                (StreamSource source) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _StreamedSourceCard(
-                    source: source,
-                    badges: _badgesForCard(badgeService, badges, source),
-                    onPlay: () => onPlay(source),
-                    onAddToTorBox: () => onAddToTorBox(source),
-                  ),
-                ),
-              ),
-            ],
-            if (seasonPacks.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 4),
-              const _SmallGroupLabel('Season Packs'),
-              ...seasonPacks.map(
-                (StreamSource source) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _StreamedSourceCard(
-                    source: source,
-                    badges: _badgesForCard(badgeService, badges, source),
-                    onPlay: () => onPlay(source),
-                    onAddToTorBox: () => onAddToTorBox(source),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
+class _SourceSmallHeaderEntry extends _SourceListEntry {
+  const _SourceSmallHeaderEntry(this.title);
+
+  final String title;
+}
+
+class _SourceCardEntry extends _SourceListEntry {
+  const _SourceCardEntry(this.source);
+
+  final StreamSource source;
+}
+
+class _SourceSpacerEntry extends _SourceListEntry {
+  const _SourceSpacerEntry(this.height);
+
+  final double height;
 }
 
 class _SmallGroupLabel extends StatelessWidget {
@@ -986,12 +999,13 @@ List<StreamBadge> _badgesForCard(
     source: source,
     limit: 10,
   );
+  if (matched.isNotEmpty) {
+    return matched;
+  }
+
   final List<StreamBadge> generated = _generatedStreamBadges(source);
   final Set<String> seen = <String>{};
-  return <StreamBadge>[
-    ...matched,
-    ...generated,
-  ]
+  return generated
       .where((StreamBadge badge) {
         final String key = badge.name.trim().toLowerCase();
         return key.isNotEmpty && seen.add(key);
@@ -1130,9 +1144,9 @@ class _StreamedSourceCard extends StatelessWidget {
             ),
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: Colors.black.withOpacity(0.28),
-                blurRadius: 20,
-                offset: const Offset(0, 12),
+                color: Colors.black.withOpacity(0.18),
+                blurRadius: 10,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
@@ -1288,14 +1302,15 @@ class _StreamBadgeWrap extends StatelessWidget {
       spacing: 9,
       runSpacing: 8,
       children: badges.map((StreamBadge badge) {
-        final String? imageUrl = badge.imageUrl;
+        final String? imageUrl = _badgeImageUrl(badge.imageUrl);
         if (imageUrl != null && imageUrl.isNotEmpty) {
           return ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 118, maxHeight: 32),
-            child: Image.network(
-              imageUrl,
-              height: 26,
+            constraints: const BoxConstraints(maxWidth: 124, maxHeight: 34),
+            child: OptimizedNetworkImage(
+              url: imageUrl,
+              height: 28,
               fit: BoxFit.contain,
+              cacheWidth: 180,
               errorBuilder: (
                 BuildContext context,
                 Object error,
@@ -1310,6 +1325,22 @@ class _StreamBadgeWrap extends StatelessWidget {
       }).toList(growable: false),
     );
   }
+}
+
+String? _badgeImageUrl(String? raw) {
+  final String value = (raw ?? '').trim();
+  if (value.isEmpty) {
+    return null;
+  }
+  if (value.startsWith('http://') ||
+      value.startsWith('https://') ||
+      value.startsWith('data:')) {
+    return value;
+  }
+  if (value.startsWith('/')) {
+    return 'https://nintle.github.io$value';
+  }
+  return 'https://nintle.github.io/Badger/$value';
 }
 
 class _TextBadge extends StatelessWidget {

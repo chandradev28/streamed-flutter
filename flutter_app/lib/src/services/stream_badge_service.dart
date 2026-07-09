@@ -106,13 +106,27 @@ class StreamBadgeService {
   }
 
   bool _matches(StreamBadge badge, String searchable) {
+    final String pattern = _normalizedPattern(badge.pattern);
     try {
-      return RegExp(badge.pattern, caseSensitive: false, multiLine: true)
+      return RegExp(pattern, caseSensitive: false, multiLine: true)
           .hasMatch(searchable);
     } catch (_) {
-      final String needle = badge.pattern.toLowerCase().trim();
+      final String needle = pattern.toLowerCase().trim();
       return needle.isNotEmpty && searchable.toLowerCase().contains(needle);
     }
+  }
+
+  String _normalizedPattern(String raw) {
+    final String pattern = raw.trim();
+    if (pattern.length < 3 || !pattern.startsWith('/')) {
+      return pattern;
+    }
+
+    final int lastSlash = pattern.lastIndexOf('/');
+    if (lastSlash <= 0) {
+      return pattern;
+    }
+    return pattern.substring(1, lastSlash);
   }
 
   void _collectBadgeRows(dynamic value, List<Map<String, dynamic>> rows) {

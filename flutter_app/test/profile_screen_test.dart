@@ -16,6 +16,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('ACCOUNT'), findsNothing);
+    expect(find.text('Switch Profile'), findsNothing);
+    expect(find.text('Account'), findsNothing);
     expect(find.text('GENERAL'), findsOneWidget);
     expect(find.text('Integrations'), findsOneWidget);
     expect(find.text('Connected Services'), findsNothing);

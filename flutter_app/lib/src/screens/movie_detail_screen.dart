@@ -10,6 +10,7 @@ import '../services/stremio_addons_service.dart';
 import '../services/tmdb_image.dart';
 import '../services/tmdb_media_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/optimized_network_image.dart';
 import '../widgets/title_logo.dart';
 import 'episode_screen.dart';
 import 'magnet_screen.dart';
@@ -595,6 +596,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         children: <Widget>[
           CustomScrollView(
             controller: _scrollController,
+            cacheExtent: 850,
             slivers: <Widget>[
               SliverToBoxAdapter(
                 child: _HeroPanel(
@@ -857,9 +859,10 @@ class _HeroPanel extends StatelessWidget {
           if (imagePath == null)
             const ColoredBox(color: AppColors.cardBackground)
           else
-            Image.network(
-              getImageUrl(imagePath, 'original'),
+            OptimizedNetworkImage(
+              url: getImageUrl(imagePath, 'w1280'),
               fit: BoxFit.cover,
+              cacheWidth: 1080,
               errorBuilder: (
                 BuildContext context,
                 Object error,
@@ -1170,9 +1173,10 @@ class _TrailerCard extends StatelessWidget {
                   if (thumbnail == null)
                     const ColoredBox(color: AppColors.cardBackground)
                   else
-                    Image.network(
-                      thumbnail,
+                    OptimizedNetworkImage(
+                      url: thumbnail,
                       fit: BoxFit.cover,
+                      cacheWidth: 520,
                       errorBuilder: (
                         BuildContext context,
                         Object error,
@@ -1443,9 +1447,10 @@ class _SeasonCard extends StatelessWidget {
             if (imagePath == null)
               const ColoredBox(color: AppColors.cardBackground)
             else
-              Image.network(
-                getImageUrl(imagePath, 'w342'),
+              OptimizedNetworkImage(
+                url: getImageUrl(imagePath, 'w342'),
                 fit: BoxFit.cover,
+                cacheWidth: 390,
                 errorBuilder: (
                   BuildContext context,
                   Object error,
@@ -1513,9 +1518,10 @@ class _RelatedCard extends StatelessWidget {
               ),
               child: item.posterPath == null
                   ? const ColoredBox(color: AppColors.cardBackground)
-                  : Image.network(
-                      getImageUrl(item.posterPath, 'w342'),
+                  : OptimizedNetworkImage(
+                      url: getImageUrl(item.posterPath, 'w342'),
                       fit: BoxFit.cover,
+                      cacheWidth: 300,
                       errorBuilder: (
                         BuildContext context,
                         Object error,
@@ -1581,9 +1587,10 @@ class _CastCard extends StatelessWidget {
                       ),
                     ),
                   )
-                : Image.network(
-                    getImageUrl(member.profilePath, 'w185'),
+                : OptimizedNetworkImage(
+                    url: getImageUrl(member.profilePath, 'w185'),
                     fit: BoxFit.cover,
+                    cacheWidth: 190,
                     errorBuilder: (
                       BuildContext context,
                       Object error,

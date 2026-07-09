@@ -125,7 +125,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool showAccount = _matchesSettingsSearch('account profile switch');
     final bool showGeneral = _matchesSettingsSearch(
       'general layout content discovery addons downloads playback streams badges integrations notifications torboxers',
     );
@@ -183,28 +182,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 22),
-            if (showAccount) ...<Widget>[
-              const _SettingsSectionLabel('ACCOUNT'),
-              _SettingsGroupCard(
-                children: <Widget>[
-                  _SettingsActionTile(
-                    icon: Icons.groups_rounded,
-                    title: 'Switch Profile',
-                    subtitle: 'Change to a different profile.',
-                    accent: _accent,
-                    onTap: () => _showPlaceholder('Switch Profile'),
-                  ),
-                  _SettingsActionTile(
-                    icon: Icons.account_circle_rounded,
-                    title: 'Account',
-                    subtitle: 'Account and sync status',
-                    accent: _accent,
-                    onTap: () => _showPlaceholder('Account'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 22),
-            ],
             if (showGeneral) ...<Widget>[
               const _SettingsSectionLabel('GENERAL'),
               _SettingsGroupCard(

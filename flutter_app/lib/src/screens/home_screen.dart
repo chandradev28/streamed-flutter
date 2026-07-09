@@ -12,6 +12,7 @@ import '../services/tmdb_media_service.dart';
 import '../services/watch_history_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/layout_options.dart';
+import '../widgets/optimized_network_image.dart';
 import 'addons_screen.dart';
 import 'episode_screen.dart';
 import 'movie_detail_screen.dart';
@@ -479,6 +480,7 @@ class _HomeScreenState extends State<HomeScreen> {
           color: accent,
           backgroundColor: AppColors.surface,
           child: CustomScrollView(
+            cacheExtent: 900,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: <Widget>[
               if (_loading && _catalogRows.isEmpty)
@@ -804,9 +806,9 @@ class _AddonHeroPanel extends StatelessWidget {
         borderRadius: BorderRadius.circular(34),
         boxShadow: <BoxShadow>[
           BoxShadow(
-            color: Colors.black.withOpacity(0.40),
-            blurRadius: 26,
-            offset: const Offset(0, 16),
+            color: Colors.black.withOpacity(0.24),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -816,9 +818,10 @@ class _AddonHeroPanel extends StatelessWidget {
           if (imageUrl.isEmpty)
             const ColoredBox(color: AppColors.cardBackground)
           else
-            Image.network(
-              imageUrl,
+            OptimizedNetworkImage(
+              url: imageUrl,
               fit: BoxFit.cover,
+              cacheWidth: 900,
               errorBuilder: (
                 BuildContext context,
                 Object error,
@@ -1032,6 +1035,7 @@ class _ContinueWatchingRail extends StatelessWidget {
     return SizedBox(
       height: posterStyle ? 194 : 166,
       child: ListView.separated(
+        cacheExtent: 700,
         padding: const EdgeInsets.fromLTRB(16, 0, 24, 0),
         scrollDirection: Axis.horizontal,
         itemCount: items.length,
@@ -1366,9 +1370,10 @@ class _HistoryArtwork extends StatelessWidget {
     final String? imagePath = item.posterPath ?? item.backdropPath;
     Widget child = imagePath == null
         ? const ColoredBox(color: AppColors.cardBackground)
-        : Image.network(
-            getImageUrl(imagePath, 'w342'),
+        : OptimizedNetworkImage(
+            url: getImageUrl(imagePath, 'w342'),
             fit: BoxFit.cover,
+            cacheWidth: 360,
             errorBuilder: (
               BuildContext context,
               Object error,
@@ -1379,7 +1384,7 @@ class _HistoryArtwork extends StatelessWidget {
           );
     if (blur) {
       child = ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
         child: child,
       );
     }
@@ -1500,6 +1505,7 @@ class _CatalogRail extends StatelessWidget {
     return SizedBox(
       height: cardHeight,
       child: ListView.separated(
+        cacheExtent: 700,
         padding: const EdgeInsets.fromLTRB(24, 0, 16, 8),
         scrollDirection: Axis.horizontal,
         itemCount: items.length,
@@ -1548,6 +1554,7 @@ class _CatalogGridScreen extends StatelessWidget {
       backgroundColor: LayoutOptions.backgroundFor(settings),
       body: SafeArea(
         child: CustomScrollView(
+          cacheExtent: 900,
           slivers: <Widget>[
             SliverToBoxAdapter(
               child: Padding(
@@ -1679,11 +1686,12 @@ class _CatalogGridCard extends StatelessWidget {
               ),
               child: posterUrl.isEmpty
                   ? const ColoredBox(color: AppColors.cardBackground)
-                  : Image.network(
-                      posterUrl,
+                  : OptimizedNetworkImage(
+                      url: posterUrl,
                       width: double.infinity,
                       height: double.infinity,
                       fit: BoxFit.cover,
+                      cacheWidth: 360,
                       errorBuilder: (
                         BuildContext context,
                         Object error,
@@ -1763,9 +1771,10 @@ class _CatalogPosterCard extends StatelessWidget {
               ),
               child: posterUrl.isEmpty
                   ? const ColoredBox(color: AppColors.cardBackground)
-                  : Image.network(
-                      posterUrl,
+                  : OptimizedNetworkImage(
+                      url: posterUrl,
                       fit: BoxFit.cover,
+                      cacheWidth: (width * 3).round(),
                       errorBuilder: (
                         BuildContext context,
                         Object error,
